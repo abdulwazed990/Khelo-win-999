@@ -1,0 +1,78 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and balance information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "username": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "balance": { "type": "number" },
+        "bonusClaimed": { "type": "boolean" },
+        "captchaInvalidUntil": { "type": "string", "format": "date-time" },
+        "lastCaptchaDate": { "type": "string", "format": "date" }
+      },
+      "required": ["uid", "name", "username", "balance"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Deposit and withdrawal records.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "type": { "type": "string", "enum": ["deposit", "withdraw"] },
+        "method": { "type": "string", "enum": ["nagad", "bkash", "rocket"] },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "senderNumber": { "type": "string" },
+        "transactionId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "type", "method", "amount", "status", "createdAt"]
+    },
+    "Bet": {
+      "title": "Bet",
+      "description": "Game betting history.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "gameName": { "type": "string" },
+        "amount": { "type": "number" },
+        "profit": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "gameName", "amount", "profit", "createdAt"]
+    },
+    "Username": {
+      "title": "Username",
+      "description": "Mapping of username to email for login.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "uid": { "type": "string" }
+      },
+      "required": ["email", "uid"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles."
+    },
+    "/usernames/{username}": {
+      "schema": "Username",
+      "description": "Username to email mapping."
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "All transactions."
+    },
+    "/bets/{betId}": {
+      "schema": "Bet",
+      "description": "All betting records."
+    }
+  }
+}

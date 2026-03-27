@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Khelo Win 999 - Full Website</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide-react@latest"></script>
+    <!-- Framer Motion -->
+    <script src="https://unpkg.com/framer-motion@10.16.4/dist/framer-motion.js"></script>
+    <!-- Date Fns -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/date-fns/2.30.0/index.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: white; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .gold-text { background: linear-gradient(to right, #fbbf24, #f59e0b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .gold-btn { background: linear-gradient(to right, #fbbf24, #f59e0b); color: #0f172a; font-weight: 600; }
+        .gold-btn:hover { background: linear-gradient(to right, #f59e0b, #d97706); }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
+        import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, getDocs, limit } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+
+        const firebaseConfig = {
+            projectId: "gen-lang-client-0320826183",
+            appId: "1:563818836408:web:3afc67179b9d4b12ad1f4d",
+            apiKey: "AIzaSyAed1QEWEbWv0veyhMgSL-MRGTqHFpoDrE",
+            authDomain: "gen-lang-client-0320826183.firebaseapp.com",
+            firestoreDatabaseId: "ai-studio-236f0ef1-6a4e-47a8-af00-ed44ebbeaa20",
+            storageBucket: "gen-lang-client-0320826183.firebasestorage.app",
+            messagingSenderId: "563818836408"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+        // Expose to window for React components
+        window.firebase = {
+            auth, db,
+            onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile,
+            doc, getDoc, setDoc, updateDoc, collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp, getDocs, limit
+        };
+    </script>
+
+    <!-- React Application -->
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+        const { motion, AnimatePresence } = window.FramerMotion;
+        
+        // Use LucideReact or Lucide depending on what's available in the bundle
+        const lucide = window.LucideReact || window.Lucide || {};
+        const { 
+            LayoutDashboard, Wallet, History: HistoryIcon, User: UserIcon, LogOut, 
+            Trophy, ShieldCheck, CreditCard, ArrowUpRight, 
+            ArrowDownLeft, Clock, CheckCircle2, XCircle, 
+            AlertCircle, ChevronRight, Gamepad2, Gift, 
+            RefreshCw, Phone, Mail, Lock, UserPlus, 
+            LogIn, Eye, EyeOff, Menu, X, Home: HomeIcon
+        } = lucide;
+
+        // --- Constants & Types ---
+        const OperationType = { CREATE: 'create', UPDATE: 'update', DELETE: 'delete', LIST: 'list', GET: 'get', WRITE: 'write' };
+
+        // --- Error Handler ---
+        const handleFirestoreError = (error, operationType, path) => {
+            const { auth } = window.firebase;
+            const errInfo = {
+                error: error instanceof Error ? error.message : String(error),
+                authInfo: {
+                    userId: auth.currentUser?.uid,
+                    email: auth.currentUser?.email,
+                    emailVerified: auth.currentUser?.emailVerified,
+                },
+                operationType,
+                path
+            };
+            console.error('Firestore Error: ', JSON.stringify(errInfo));
+            throw new Error(JSON.stringify(errInfo));
+        };
+
+        // --- Components ---
+
+        // 1. Auth Component
+        const Auth = ({ onAuthSuccess }) => {
+            const { auth, db, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, setDoc, doc, getDocs, collection, query, where, serverTimestamp } = window.firebase;
+            const [isLogin, setIsLogin] = useState(true);
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState('');
+            const [showPassword, setShowPassword] = useState(false);
+            
+            const [formData, setFormData] = useState({
+                email: '',
+                password: '',
+                username: '',
+                phone: '',
+                confirmPassword: ''
+            });
+
+            const validateUsername = async (username) => {
+                const q = query(collection(db, 'users'), where('username', '==', username));
+                const snapshot = await getDocs(q);
+                return snapshot.empty;
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setError('');
+                setLoading(true);
+
+                try {
+                    if (isLogin) {
+                        const loginEmail = formData.email.includes('@') ? formData.email : `${formData.email}@khelowin.com`;
+                        await signInWithEmailAndPassword(auth, loginEmail, formData.password);
+                    } else {
+                        if (formData.password !== formData.confirmPassword) throw new Error('Passwords do not match');
+                        if (formData.password.length < 6) throw new Error('Password must be at least 6 characters');
+                        
+                        const isUsernameAvailable = await validateUsername(formData.username);
+                        if (!isUsernameAvailable) throw new Error('Username already taken');
+
+                        const signupEmail = formData.email || `${formData.username}@khelowin.com`;
+                        const userCredential = await createUserWithEmailAndPassword(auth, signupEmail, formData.password);
+                        const user = userCredential.user;
+
+                        await updateProfile(user, { displayName: formData.username });
+
+                        await setDoc(doc(db, 'users', user.uid), {
+                            uid: user.uid,
+                            username: formData.username,
+                            email: signupEmail,
+                            phone: formData.phone || '',
+                            balance: 2300,
+                            bonus: 0,
+                            captchaRewards: 0,
+                            role: 'user',
+                            createdAt: serverTimestamp(),
+                            lastCaptchaAt: null,
+                            lastDailyBonusAt: null,
+                            welcomeBonusClaimed: true,
+                            captchaLockoutUntil: null,
+                            freeSpins: 1,
+                            lastSpinDate: null
+                        });
+                    }
+                    onAuthSuccess?.();
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center p-4 bg-[#0f172a]">
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md glass p-8 rounded-2xl">
+                        <div className="text-center mb-8">
+                            <h1 className="text-3xl font-bold gold-text mb-2">KHELO WIN 999</h1>
+                            <p className="text-slate-400">{isLogin ? 'Welcome back, player!' : 'Create your gaming account'}</p>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            {!isLogin && (
+                                <>
+                                    <div className="space-y-1">
+                                        <label className="text-sm text-slate-400 ml-1">Username</label>
+                                        <div className="relative">
+                                            <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                                            <input required type="text" placeholder="Choose username" className="w-full bg-slate-800/50 border border-slate-700 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-amber-500"
+                                                value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-sm text-slate-400 ml-1">Phone Number</label>
+                                        <div className="relative">
+                                            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                                            <input required type="tel" placeholder="Your phone number" className="w-full bg-slate-800/50 border border-slate-700 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-amber-500"
+                                                value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+
+                            <div className="space-y-1">
+                                <label className="text-sm text-slate-400 ml-1">{isLogin ? 'Email or Username' : 'Email (Optional)'}</label>
+                                <div className="relative">
+                                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                                    <input required={isLogin} type="text" placeholder={isLogin ? "Email or username" : "Email address"} className="w-full bg-slate-800/50 border border-slate-700 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-amber-500"
+                                        value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                                </div>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-sm text-slate-400 ml-1">Password</label>
+                                <div className="relative">
+                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                                    <input required type={showPassword ? "text" : "password"} placeholder="Enter password" className="w-full bg-slate-800/50 border border-slate-700 rounded-xl py-3 pl-10 pr-12 focus:outline-none focus:border-amber-500"
+                                        value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} />
+                                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300">
+                                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {!isLogin && (
+                                <div className="space-y-1">
+                                    <label className="text-sm text-slate-400 ml-1">Confirm Password</label>
+                                    <div className="relative">
+                                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                                        <input required type="password" placeholder="Confirm password" className="w-full bg-slate-800/50 border border-slate-700 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:border-amber-500"
+                                            value={formData.confirmPassword} onChange={e => setFormData({...formData, confirmPassword: e.target.value})} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {error && (
+                                <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-2 text-red-400 text-sm bg-red-400/10 p-3 rounded-xl">
+                                    <AlertCircle className="w-4 h-4 shrink-0" />
+                                    <span>{error}</span>
+                                </motion.div>
+                            )}
+
+                            <button disabled={loading} type="submit" className="w-full gold-btn py-4 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95">
+                                {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : (isLogin ? <LogIn className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />)}
+                                <span>{isLogin ? 'Sign In' : 'Create Account'}</span>
+                            </button>
+                        </form>
+
+                        <div className="mt-8 text-center">
+                            <button onClick={() => { setIsLogin(!isLogin); setError(''); }} className="text-slate-400 hover:text-amber-500 transition-colors">
+                                {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Sign In"}
+                            </button>
+                        </div>
+                    </motion.div>
+                </div>
+            );
+        };
+
+        // 2. Home Component
+        const Home = ({ userData }) => {
+            const categories = [
+                { id: 'slots', name: 'Slots', icon: <Gamepad2 className="w-6 h-6" />, count: 124 },
+                { id: 'live', name: 'Live Casino', icon: <Trophy className="w-6 h-6" />, count: 45 },
+                { id: 'sports', name: 'Sports', icon: <ShieldCheck className="w-6 h-6" />, count: 89 },
+                { id: 'table', name: 'Table Games', icon: <CreditCard className="w-6 h-6" />, count: 32 }
+            ];
+
+            const games = [
+                { id: 1, name: 'Mega Fortune', category: 'Slots', image: 'https://picsum.photos/seed/slot1/400/300', rating: 4.8 },
+                { id: 2, name: 'Lightning Roulette', category: 'Live', image: 'https://picsum.photos/seed/roulette/400/300', rating: 4.9 },
+                { id: 3, name: 'Blackjack Pro', category: 'Table', image: 'https://picsum.photos/seed/bj/400/300', rating: 4.7 },
+                { id: 4, name: 'Starburst', category: 'Slots', image: 'https://picsum.photos/seed/star/400/300', rating: 4.6 }
+            ];
+
+            return (
+                <div className="space-y-8 pb-24">
+                    {/* Hero Section */}
+                    <div className="relative h-48 rounded-3xl overflow-hidden glass">
+                        <img src="https://picsum.photos/seed/casino/1200/400" className="w-full h-full object-cover opacity-40" />
+                        <div className="absolute inset-0 flex flex-col justify-center p-8">
+                            <h2 className="text-3xl font-bold gold-text mb-2">WIN BIG TODAY!</h2>
+                            <p className="text-slate-300 max-w-xs">Join thousands of players and start your winning journey.</p>
+                        </div>
+                    </div>
+
+                    {/* Stats Grid */}
+                    {userData && (
+                        <div className="grid grid-cols-3 gap-4">
+                            <div className="glass p-4 rounded-2xl text-center">
+                                <p className="text-xs text-slate-400 mb-1">Balance</p>
+                                <p className="text-lg font-bold text-amber-500">৳{userData.balance}</p>
+                            </div>
+                            <div className="glass p-4 rounded-2xl text-center">
+                                <p className="text-xs text-slate-400 mb-1">Bonus</p>
+                                <p className="text-lg font-bold text-green-500">৳{userData.bonus}</p>
+                            </div>
+                            <div className="glass p-4 rounded-2xl text-center">
+                                <p className="text-xs text-slate-400 mb-1">Captcha</p>
+                                <p className="text-lg font-bold text-blue-500">৳{userData.captchaRewards}</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Categories */}
+                    <div className="space-y-4">
+                        <h3 className="text-xl font-bold flex items-center gap-2">
+                            <Gamepad2 className="w-5 h-5 text-amber-500" />
+                            Categories
+                        </h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                            {categories.map(cat => (
+                                <motion.button key={cat.id} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="glass p-4 rounded-2xl flex flex-col items-center gap-2 hover:border-amber-500/50 transition-all">
+                                    <div className="p-3 bg-slate-800 rounded-xl text-amber-500">{cat.icon}</div>
+                                    <span className="font-medium">{cat.name}</span>
+                                    <span className="text-xs text-slate-500">{cat.count} games</span>
+                                </motion.button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Featured Games */}
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-xl font-bold flex items-center gap-2">
+                                <Trophy className="w-5 h-5 text-amber-500" />
+                                Featured Games
+                            </h3>
+                            <button className="text-amber-500 text-sm font-medium">View All</button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            {games.map(game => (
+                                <motion.div key={game.id} className="glass rounded-2xl overflow-hidden group">
+                                    <div className="relative h-32">
+                                        <img src={game.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                        <div className="absolute top-2 right-2 px-2 py-1 bg-black/60 backdrop-blur-md rounded-lg text-[10px] font-bold text-amber-500 flex items-center gap-1">
+                                            ★ {game.rating}
+                                        </div>
+                                    </div>
+                                    <div className="p-3">
+                                        <p className="font-bold text-sm truncate">{game.name}</p>
+                                        <p className="text-[10px] text-slate-500">{game.category}</p>
+                                        <button className="w-full mt-2 py-1.5 bg-slate-800 hover:bg-amber-500 hover:text-slate-900 rounded-lg text-xs font-bold transition-colors">
+                                            Play Now
+                                        </button>
+                                    </div>
+                                </motion.div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 3. Bonus Component
+        const Bonus = ({ userData }) => {
+            const { db, updateDoc, doc, serverTimestamp } = window.firebase;
+            const [claiming, setClaiming] = useState(null);
+            const [status, setStatus] = useState({ type: '', message: '' });
+
+            const [spinning, setSpinning] = useState(false);
+            const [spinResult, setSpinResult] = useState(null);
+
+            const spinOptions = [
+                { label: '৳5', weight: 40, value: 5, type: 'money' },
+                { label: '৳15', weight: 20, value: 15, type: 'money' },
+                { label: '৳500', weight: 1, value: 500, type: 'money' },
+                { label: '5 SPINS', weight: 10, value: 5, type: 'spins' },
+                { label: '10 SPINS', weight: 5, value: 10, type: 'spins' },
+                { label: 'TRY AGAIN', weight: 24, value: 0, type: 'none' }
+            ];
+
+            const handleSpin = async () => {
+                if (!userData || spinning) return;
+                
+                const lastSpin = userData.lastSpinDate ? (userData.lastSpinDate.toDate ? userData.lastSpinDate.toDate() : new Date(userData.lastSpinDate)) : null;
+                const canSpin = !lastSpin || (new Date().getTime() - lastSpin.getTime() > 24 * 60 * 60 * 1000);
+                
+                if (!canSpin && (userData.freeSpins || 0) <= 0) {
+                    alert('Next free spin available in 24 hours');
+                    return;
+                }
+
+                setSpinning(true);
+                setSpinResult(null);
+
+                const totalWeight = spinOptions.reduce((acc, opt) => acc + opt.weight, 0);
+                let random = Math.random() * totalWeight;
+                let selected = spinOptions[spinOptions.length - 1];
+                
+                for (const opt of spinOptions) {
+                    if (random < opt.weight) {
+                        selected = opt;
+                        break;
+                    }
+                    random -= opt.weight;
+                }
+
+                setTimeout(async () => {
+                    try {
+                        const userRef = doc(db, 'users', userData.uid);
+                        const updates = {
+                            lastSpinDate: serverTimestamp()
+                        };
+
+                        if (selected.type === 'money') {
+                            updates.balance = userData.balance + selected.value;
+                        } else if (selected.type === 'spins') {
+                            updates.freeSpins = (userData.freeSpins || 0) + selected.value;
+                        }
+
+                        if ((userData.freeSpins || 0) > 0 && !canSpin) {
+                            updates.freeSpins = (userData.freeSpins || 0) - 1;
+                        }
+
+                        await updateDoc(userRef, updates);
+                        setSpinResult(selected.label);
+                    } catch (error) {
+                        console.error(error);
+                    } finally {
+                        setSpinning(false);
+                    }
+                }, 3000);
+            };
+
+            const handleClaim = async (type) => {
+                if (!userData) return;
+                setClaiming(type);
+                setStatus({ type: '', message: '' });
+
+                try {
+                    const userRef = doc(db, 'users', userData.uid);
+                    if (type === 'daily') {
+                        const lastClaim = userData.lastDailyBonusAt?.toDate();
+                        const now = new Date();
+                        if (lastClaim && now.getTime() - lastClaim.getTime() < 24 * 60 * 60 * 1000) {
+                            const remainingMs = 24 * 60 * 60 * 1000 - (now.getTime() - lastClaim.getTime());
+                            const hours = Math.floor(remainingMs / (60 * 60 * 1000));
+                            const minutes = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
+                            throw new Error(`Daily bonus available in ${hours}h ${minutes}m`);
+                        }
+                        await updateDoc(userRef, {
+                            bonus: userData.bonus + 50,
+                            lastDailyBonusAt: serverTimestamp()
+                        });
+                        setStatus({ type: 'success', message: '৳50 Daily Bonus added!' });
+                    }
+                } catch (err) {
+                    setStatus({ type: 'error', message: err.message });
+                } finally {
+                    setClaiming(null);
+                }
+            };
+
+            return (
+                <div className="space-y-6 pb-24">
+                    <h2 className="text-2xl font-bold gold-text">Rewards & Bonuses</h2>
+                    
+                    {status.message && (
+                        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className={`p-4 rounded-2xl flex items-center gap-3 ${status.type === 'success' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                            {status.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+                            <p className="text-sm font-medium">{status.message}</p>
+                        </motion.div>
+                    )}
+
+                    <div className="glass p-6 rounded-3xl space-y-4 relative overflow-hidden text-center">
+                        <div className="absolute top-0 right-0 p-4 opacity-10"><RefreshCw className={`w-24 h-24 ${spinning ? 'animate-spin' : ''}`} /></div>
+                        <div className="relative">
+                            <h3 className="text-xl font-bold mb-1">Lucky Spin Wheel</h3>
+                            <p className="text-sm text-slate-400 mb-4">Win up to ৳500 every 24 hours!</p>
+                            
+                            <div className="flex justify-center py-6">
+                                <div className={`w-32 h-32 rounded-full border-4 border-amber-500 flex items-center justify-center bg-slate-800 transition-transform duration-[3000ms] ${spinning ? 'rotate-[1080deg]' : ''}`}>
+                                    {spinResult ? <span className="text-amber-500 font-bold">{spinResult}</span> : <Trophy className="text-amber-500" />}
+                                </div>
+                            </div>
+
+                            <button disabled={spinning} onClick={handleSpin} className="w-full gold-btn py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
+                                {spinning ? <RefreshCw className="w-5 h-5 animate-spin" /> : `Spin Now (${userData?.freeSpins || 0} Free)`}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="glass p-6 rounded-3xl space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h3 className="text-lg font-bold">Daily Login Bonus</h3>
+                                <p className="text-xs text-slate-400">Claim every 24 hours</p>
+                            </div>
+                            <div className="text-xl font-bold text-green-500">৳50.00</div>
+                        </div>
+                        <button disabled={claiming === 'daily'} onClick={() => handleClaim('daily')} className="w-full bg-slate-800 hover:bg-slate-700 py-3 rounded-xl font-bold transition-colors disabled:opacity-50">
+                            {claiming === 'daily' ? <RefreshCw className="w-5 h-5 animate-spin" /> : 'Claim Daily Reward'}
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        // 4. Captcha Component
+        const Captcha = ({ userData }) => {
+            const { db, updateDoc, doc, serverTimestamp } = window.firebase;
+            const [step, setStep] = useState(1);
+            const [input, setInput] = useState('');
+            const [captcha, setCaptcha] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState('');
+            const [lockout, setLockout] = useState(null);
+
+            const generateCaptcha = () => {
+                const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+                let result = '';
+                for (let i = 0; i < 6; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
+                setCaptcha(result);
+            };
+
+            useEffect(() => {
+                generateCaptcha();
+                if (userData?.captchaLockoutUntil) {
+                    const until = userData.captchaLockoutUntil.toDate();
+                    if (until > new Date()) setLockout(until);
+                }
+            }, [userData]);
+
+            const isAlreadyClaimed = useMemo(() => {
+                if (!userData?.lastCaptchaAt) return false;
+                const last = userData.lastCaptchaAt.toDate();
+                return new Date().getTime() - last.getTime() < 24 * 60 * 60 * 1000;
+            }, [userData]);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setError('');
+                
+                if (input.toUpperCase() !== captcha) {
+                    // Block for 24 hours on failure
+                    setLoading(true);
+                    try {
+                        const userRef = doc(db, 'users', userData.uid);
+                        const lockoutDate = new Date(new Date().getTime() + 24 * 60 * 60 * 1000);
+                        await updateDoc(userRef, {
+                            captchaLockoutUntil: lockoutDate
+                        });
+                        setLockout(lockoutDate);
+                        setError('Incorrect captcha. You are blocked for 24 hours.');
+                    } catch (err) {
+                        setError(err.message);
+                    } finally {
+                        setLoading(false);
+                    }
+                    return;
+                }
+
+                if (step < 3) {
+                    setStep(step + 1);
+                    generateCaptcha();
+                    setInput('');
+                } else {
+                    setLoading(true);
+                    try {
+                        const userRef = doc(db, 'users', userData.uid);
+                        const reward = Math.floor(Math.random() * 46) + 5; // 5 to 50
+                        await updateDoc(userRef, {
+                            balance: userData.balance + reward,
+                            captchaRewards: userData.captchaRewards + reward,
+                            lastCaptchaAt: serverTimestamp()
+                        });
+                        setStep(4); // Success state
+                    } catch (err) {
+                        setError(err.message);
+                    } finally {
+                        setLoading(false);
+                    }
+                }
+            };
+
+            if (lockout && lockout > new Date()) {
+                return (
+                    <div className="flex flex-col items-center justify-center h-[60vh] text-center p-6">
+                        <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mb-6">
+                            <Clock className="w-10 h-10 text-red-500" />
+                        </div>
+                        <h2 className="text-2xl font-bold mb-2">Lockout Active</h2>
+                        <p className="text-slate-400">Too many incorrect attempts. Please try again after:</p>
+                        <p className="text-xl font-bold text-amber-500 mt-2">{lockout.toLocaleString()}</p>
+                    </div>
+                );
+            }
+
+            if (isAlreadyClaimed) {
+                const nextAvailable = new Date(userData.lastCaptchaAt.toDate().getTime() + 24 * 60 * 60 * 1000);
+                return (
+                    <div className="flex flex-col items-center justify-center h-[60vh] text-center p-6">
+                        <div className="w-20 h-20 bg-blue-500/10 rounded-full flex items-center justify-center mb-6">
+                            <CheckCircle2 className="w-10 h-10 text-blue-500" />
+                        </div>
+                        <h2 className="text-2xl font-bold mb-2">Challenge Completed</h2>
+                        <p className="text-slate-400">You've already completed your daily challenge.</p>
+                        <p className="text-sm text-amber-500 mt-4 font-bold uppercase tracking-widest">Next available at:<br/>{nextAvailable.toLocaleString()}</p>
+                    </div>
+                );
+            }
+
+            if (step === 4) {
+                return (
+                    <div className="flex flex-col items-center justify-center h-[60vh] text-center p-6">
+                        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mb-6">
+                            <CheckCircle2 className="w-10 h-10 text-green-500" />
+                        </motion.div>
+                        <h2 className="text-2xl font-bold mb-2">Well Done!</h2>
+                        <p className="text-slate-400">You've earned ৳10.00 rewards.</p>
+                        <button onClick={() => { setStep(1); generateCaptcha(); }} className="mt-8 gold-btn px-8 py-3 rounded-xl">Play Again</button>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="space-y-8 pb-24">
+                    <div className="text-center">
+                        <h2 className="text-2xl font-bold gold-text">Captcha Challenge</h2>
+                        <p className="text-slate-400">Step {step} of 3</p>
+                    </div>
+
+                    <div className="glass p-8 rounded-3xl space-y-6">
+                        <div className="flex justify-center">
+                            <div className="bg-slate-800 p-6 rounded-2xl border-2 border-dashed border-slate-700 select-none">
+                                <span className="text-4xl font-black tracking-[0.5em] italic text-amber-500/80 blur-[0.5px]">{captcha}</span>
+                            </div>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <input required type="text" placeholder="Enter characters above" className="w-full bg-slate-900 border border-slate-700 rounded-xl py-4 px-6 text-center text-xl font-bold uppercase tracking-widest focus:outline-none focus:border-amber-500"
+                                value={input} onChange={e => setInput(e.target.value)} />
+                            
+                            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+
+                            <button disabled={loading} type="submit" className="w-full gold-btn py-4 rounded-xl font-bold flex items-center justify-center gap-2">
+                                {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : 'Verify & Continue'}
+                            </button>
+                        </form>
+                    </div>
+
+                    <div className="glass p-4 rounded-2xl flex items-center gap-3 text-slate-400 text-sm">
+                        <AlertCircle className="w-5 h-5 shrink-0 text-amber-500" />
+                        <p>Complete 3 steps to earn ৳10.00. Incorrect attempts may lead to temporary lockout.</p>
+                    </div>
+                </div>
+            );
+        };
+
+        // 5. Profile Component
+        const Profile = ({ userData, onLogout, setActiveTab }) => {
+            return (
+                <div className="space-y-6 pb-24">
+                    {/* Header Card */}
+                    <div className="glass p-6 rounded-3xl flex items-center gap-4 relative overflow-hidden">
+                        <div className="w-16 h-16 bg-amber-500 rounded-2xl flex items-center justify-center text-slate-900 text-2xl font-bold shrink-0">
+                            {userData?.username?.[0]?.toUpperCase()}
+                        </div>
+                        <div className="flex-1">
+                            <h2 className="text-xl font-bold">{userData?.username}</h2>
+                            <p className="text-slate-400 text-xs">{userData?.email}</p>
+                            <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 bg-amber-500/10 text-amber-500 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                                VIP Level 1
+                            </div>
+                        </div>
+                        <button onClick={onLogout} className="p-3 bg-red-500/10 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-lg active:scale-95">
+                            <LogOut className="w-5 h-5" />
+                        </button>
+                    </div>
+
+                    {/* Balance Card */}
+                    <div className="glass p-6 rounded-3xl text-center relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-1 bg-amber-500/30"></div>
+                        <p className="text-xs text-slate-400 mb-1 uppercase tracking-widest font-bold">Total Balance</p>
+                        <p className="text-4xl font-black gold-text">৳{userData?.balance?.toFixed(2)}</p>
+                    </div>
+
+                    {/* Quick Actions - Higher up as requested */}
+                    <div className="grid grid-cols-3 gap-3">
+                        <button onClick={() => setActiveTab('wallet')} className="glass p-4 rounded-2xl flex flex-col items-center justify-center gap-2 hover:border-amber-500/50 transition-all active:scale-95">
+                            <div className="p-2 bg-blue-500/10 text-blue-500 rounded-xl"><ArrowDownLeft className="w-6 h-6" /></div>
+                            <span className="text-[10px] font-black uppercase tracking-tighter">Deposit</span>
+                        </button>
+                        <button onClick={() => setActiveTab('wallet')} className="glass p-4 rounded-2xl flex flex-col items-center justify-center gap-2 hover:border-amber-500/50 transition-all active:scale-95">
+                            <div className="p-2 bg-amber-500/10 text-amber-500 rounded-xl"><ArrowUpRight className="w-6 h-6" /></div>
+                            <span className="text-[10px] font-black uppercase tracking-tighter">Withdraw</span>
+                        </button>
+                        <button onClick={() => setActiveTab('history')} className="glass p-4 rounded-2xl flex flex-col items-center justify-center gap-2 hover:border-amber-500/50 transition-all active:scale-95">
+                            <div className="p-2 bg-purple-500/10 text-purple-500 rounded-xl"><HistoryIcon className="w-6 h-6" /></div>
+                            <span className="text-[10px] font-black uppercase tracking-tighter">History</span>
+                        </button>
+                    </div>
+
+                    {/* Secondary Actions */}
+                    <div className="space-y-2">
+                        <button onClick={() => setActiveTab('bonus')} className="w-full glass p-4 rounded-2xl flex items-center justify-between group active:scale-[0.98] transition-all">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-green-500/10 text-green-500 rounded-xl"><Gift className="w-5 h-5" /></div>
+                                <span className="text-sm font-bold">Bonus Center</span>
+                            </div>
+                            <ChevronRight className="w-5 h-5 text-slate-600 group-hover:text-amber-500 transition-colors" />
+                        </button>
+                        <button onClick={() => setActiveTab('history')} className="w-full glass p-4 rounded-2xl flex items-center justify-between group active:scale-[0.98] transition-all">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-indigo-500/10 text-indigo-500 rounded-xl"><Gamepad2 className="w-5 h-5" /></div>
+                                <span className="text-sm font-bold">Betting Records</span>
+                            </div>
+                            <ChevronRight className="w-5 h-5 text-slate-600 group-hover:text-amber-500 transition-colors" />
+                        </button>
+                        <button className="w-full glass p-4 rounded-2xl flex items-center justify-between group active:scale-[0.98] transition-all">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-slate-500/10 text-slate-500 rounded-xl"><ShieldCheck className="w-5 h-5" /></div>
+                                <span className="text-sm font-bold">Security Settings</span>
+                            </div>
+                            <ChevronRight className="w-5 h-5 text-slate-600 group-hover:text-amber-500 transition-colors" />
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        // 6. Transactions Component
+        const Transactions = ({ userData }) => {
+            const { db, addDoc, collection, serverTimestamp } = window.firebase;
+            const [tab, setTab] = useState('deposit');
+            const [amount, setAmount] = useState('');
+            const [method, setMethod] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [status, setStatus] = useState({ type: '', message: '' });
+
+            const methods = [
+                { id: 'bkash', name: 'bKash', color: 'bg-[#D12053]' },
+                { id: 'nagad', name: 'Nagad', color: 'bg-[#F7941D]' },
+                { id: 'rocket', name: 'Rocket', color: 'bg-[#8C3494]' }
+            ];
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                if (!userData || !method || !amount) return;
+                
+                const numAmount = parseFloat(amount);
+                if (tab === 'withdraw' && numAmount > userData.balance) {
+                    setStatus({ type: 'error', message: 'Insufficient balance' });
+                    return;
+                }
+                if (numAmount < 100) {
+                    setStatus({ type: 'error', message: 'Minimum amount is ৳100' });
+                    return;
+                }
+
+                setLoading(true);
+                try {
+                    await addDoc(collection(db, 'transactions'), {
+                        uid: userData.uid,
+                        username: userData.username,
+                        type: tab,
+                        amount: numAmount,
+                        method,
+                        status: 'pending',
+                        createdAt: serverTimestamp()
+                    });
+                    setStatus({ type: 'success', message: `${tab.charAt(0).toUpperCase() + tab.slice(1)} request submitted!` });
+                    setAmount('');
+                    setMethod('');
+                } catch (err) {
+                    setStatus({ type: 'error', message: err.message });
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="space-y-8 pb-24">
+                    <div className="flex p-1 bg-slate-800 rounded-2xl">
+                        <button onClick={() => { setTab('deposit'); setStatus({type:'', message:''}); }} className={`flex-1 py-3 rounded-xl font-bold transition-all ${tab === 'deposit' ? 'bg-amber-500 text-slate-900' : 'text-slate-400'}`}>Deposit</button>
+                        <button onClick={() => { setTab('withdraw'); setStatus({type:'', message:''}); }} className={`flex-1 py-3 rounded-xl font-bold transition-all ${tab === 'withdraw' ? 'bg-amber-500 text-slate-900' : 'text-slate-400'}`}>Withdraw</button>
+                    </div>
+
+                    {status.message && (
+                        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className={`p-4 rounded-2xl flex items-center gap-3 ${status.type === 'success' ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>
+                            {status.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+                            <p className="text-sm font-medium">{status.message}</p>
+                        </motion.div>
+                    )}
+
+                    <form onSubmit={handleSubmit} className="space-y-6">
+                        <div className="space-y-3">
+                            <label className="text-sm text-slate-400 ml-1">Select Method</label>
+                            <div className="grid grid-cols-3 gap-3">
+                                {methods.map(m => (
+                                    <button key={m.id} type="button" onClick={() => setMethod(m.id)} className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${method === m.id ? 'border-amber-500 bg-amber-500/10' : 'border-slate-700 bg-slate-800/50'}`}>
+                                        <div className={`w-10 h-10 rounded-full ${m.color} flex items-center justify-center text-white font-bold text-[10px]`}>{m.name[0]}</div>
+                                        <span className="text-xs font-bold">{m.name}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-sm text-slate-400 ml-1">Amount (৳)</label>
+                            <div className="relative">
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold">৳</span>
+                                <input required type="number" placeholder="0.00" className="w-full bg-slate-800 border border-slate-700 rounded-2xl py-4 pl-10 pr-4 text-xl font-bold focus:outline-none focus:border-amber-500"
+                                    value={amount} onChange={e => setAmount(e.target.value)} />
+                            </div>
+                            <div className="flex gap-2">
+                                {[500, 1000, 5000].map(val => (
+                                    <button key={val} type="button" onClick={() => setAmount(val.toString())} className="flex-1 py-2 bg-slate-800 rounded-xl text-xs font-bold hover:bg-slate-700 transition-colors">৳{val}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <button disabled={loading || !method || !amount} type="submit" className="w-full gold-btn py-4 rounded-2xl font-bold flex items-center justify-center gap-2 disabled:opacity-50">
+                            {loading ? <RefreshCw className="w-5 h-5 animate-spin" /> : (tab === 'deposit' ? <ArrowDownLeft className="w-5 h-5" /> : <ArrowUpRight className="w-5 h-5" />)}
+                            <span>Confirm {tab.charAt(0).toUpperCase() + tab.slice(1)}</span>
+                        </button>
+                    </form>
+                </div>
+            );
+        };
+
+        // 7. History Component
+        const HistoryTab = ({ userData }) => {
+            const { db, collection, query, where, orderBy, onSnapshot } = window.firebase;
+            const [tab, setTab] = useState('bets');
+            const [items, setItems] = useState([]);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                if (!userData) return;
+                setLoading(true);
+                const colName = tab === 'bets' ? 'bets' : 'transactions';
+                const q = query(collection(db, colName), where('uid', '==', userData.uid), orderBy('createdAt', 'desc'));
+                
+                const unsubscribe = onSnapshot(q, (snapshot) => {
+                    setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                    setLoading(false);
+                }, (err) => {
+                    console.error("History error:", err);
+                    setLoading(false);
+                });
+                return () => unsubscribe();
+            }, [userData, tab]);
+
+            return (
+                <div className="space-y-6 pb-24">
+                    <div className="flex p-1 bg-slate-800 rounded-2xl">
+                        <button onClick={() => setTab('bets')} className={`flex-1 py-3 rounded-xl font-bold transition-all ${tab === 'bets' ? 'bg-amber-500 text-slate-900' : 'text-slate-400'}`}>Bet History</button>
+                        <button onClick={() => setTab('transactions')} className={`flex-1 py-3 rounded-xl font-bold transition-all ${tab === 'transactions' ? 'bg-amber-500 text-slate-900' : 'text-slate-400'}`}>Transactions</button>
+                    </div>
+
+                    {loading ? (
+                        <div className="flex justify-center py-12"><RefreshCw className="w-8 h-8 animate-spin text-amber-500" /></div>
+                    ) : items.length === 0 ? (
+                        <div className="text-center py-12 text-slate-500">No records found</div>
+                    ) : (
+                        <div className="space-y-3">
+                            {items.map(item => (
+                                <div key={item.id} className="glass p-4 rounded-2xl flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-2 rounded-lg ${item.type === 'deposit' || item.status === 'won' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                                            {tab === 'bets' ? <Trophy className="w-5 h-5" /> : (item.type === 'deposit' ? <ArrowDownLeft className="w-5 h-5" /> : <ArrowUpRight className="w-5 h-5" />)}
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-sm">{tab === 'bets' ? item.gameName : (item.type.charAt(0).toUpperCase() + item.type.slice(1))}</p>
+                                            <p className="text-[10px] text-slate-500">{item.createdAt ? item.createdAt.toDate().toLocaleString() : 'Processing...'}</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className={`font-bold ${item.type === 'deposit' || item.status === 'won' ? 'text-green-500' : 'text-red-500'}`}>
+                                            {item.type === 'deposit' || item.status === 'won' ? '+' : '-'}৳{item.amount}
+                                        </p>
+                                        <p className={`text-[10px] font-bold uppercase ${item.status === 'pending' ? 'text-amber-500' : item.status === 'completed' || item.status === 'won' ? 'text-green-500' : 'text-red-500'}`}>
+                                            {item.status}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // --- Main App Component ---
+        const App = () => {
+            const { auth, db, onAuthStateChanged, signOut, doc, onSnapshot } = window.firebase;
+            const [user, setUser] = useState(null);
+            const [userData, setUserData] = useState(null);
+            const [activeTab, setActiveTab] = useState('home');
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                const unsubscribe = onAuthStateChanged(auth, (u) => {
+                    setUser(u);
+                    if (u) {
+                        const userRef = doc(db, 'users', u.uid);
+                        const unsubData = onSnapshot(userRef, (snap) => {
+                            if (snap.exists()) setUserData(snap.data());
+                            setLoading(false);
+                        }, (err) => {
+                            console.error("User data error:", err);
+                            setLoading(false);
+                        });
+                        return () => unsubData();
+                    } else {
+                        setUserData(null);
+                        setLoading(false);
+                    }
+                });
+                return () => unsubscribe();
+            }, []);
+
+            const handleLogout = async () => {
+                await signOut(auth);
+                setActiveTab('home');
+            };
+
+            if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#0f172a]"><RefreshCw className="w-12 h-12 animate-spin text-amber-500" /></div>;
+
+            if (!user) return <Auth onAuthSuccess={() => setActiveTab('home')} />;
+
+            return (
+                <div className="min-h-screen max-w-md mx-auto relative bg-[#0f172a] shadow-2xl overflow-hidden">
+                    {/* Header */}
+                    <header className="sticky top-0 z-50 glass px-6 py-4 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center font-bold text-slate-900">K</div>
+                            <h1 className="font-black gold-text text-lg">KHELO WIN</h1>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="bg-slate-800/80 px-3 py-1.5 rounded-full flex items-center gap-2 border border-slate-700">
+                                <Wallet className="w-3 h-3 text-amber-500" />
+                                <span className="text-xs font-bold">৳{userData?.balance?.toFixed(2)}</span>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* Main Content */}
+                    <main className="px-6 pt-6 min-h-[calc(100vh-140px)]">
+                        <AnimatePresence mode="wait">
+                            <motion.div key={activeTab} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} transition={{ duration: 0.2 }}>
+                                {activeTab === 'home' && <Home userData={userData} />}
+                                {activeTab === 'bonus' && <Bonus userData={userData} />}
+                                {activeTab === 'captcha' && <Captcha userData={userData} />}
+                                {activeTab === 'history' && <HistoryTab userData={userData} />}
+                                {activeTab === 'profile' && <Profile userData={userData} onLogout={handleLogout} setActiveTab={setActiveTab} />}
+                                {activeTab === 'wallet' && <Transactions userData={userData} />}
+                            </motion.div>
+                        </AnimatePresence>
+                    </main>
+
+                    {/* Bottom Navigation */}
+                    <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md glass border-t border-slate-800 px-6 py-3 flex items-center justify-between z-50">
+                        {[
+                            { id: 'home', icon: <HomeIcon />, label: 'Home' },
+                            { id: 'bonus', icon: <Gift />, label: 'Bonus' },
+                            { id: 'captcha', icon: <RefreshCw />, label: 'Captcha' },
+                            { id: 'wallet', icon: <Wallet />, label: 'Wallet' },
+                            { id: 'history', icon: <HistoryIcon />, label: 'History' },
+                            { id: 'profile', icon: <UserIcon />, label: 'Profile' }
+                        ].map(item => (
+                            <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center gap-1 transition-all ${activeTab === item.id ? 'text-amber-500 scale-110' : 'text-slate-500 hover:text-slate-300'}`}>
+                                <div className={activeTab === item.id ? 'animate-pulse' : ''}>
+                                    {React.cloneElement(item.icon, { className: 'w-5 h-5' })}
+                                </div>
+                                <span className="text-[10px] font-bold uppercase tracking-tighter">{item.label}</span>
+                            </button>
+                        ))}
+                    </nav>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

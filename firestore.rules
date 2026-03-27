@@ -1,0 +1,92 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // Collection: users
+    // Fields: uid, name, username, phone, email, balance, bonusClaimed, lastCaptchaDate, captchaInvalidUntil
+    //
+    // Collection: transactions
+    // Fields: uid, type, method, amount, status, senderNumber, transactionId, createdAt
+    //
+    // Collection: bets
+    // Fields: uid, gameName, amount, profit, createdAt
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "mohammadabdulwazed1@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'name', 'username', 'balance']) &&
+             data.uid is string &&
+             data.name is string && data.name.size() < 100 &&
+             data.username is string && data.username.size() < 50 &&
+             data.balance is number;
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['uid', 'type', 'method', 'amount', 'status', 'createdAt']) &&
+             data.uid == request.auth.uid &&
+             data.type in ['deposit', 'withdraw'] &&
+             data.method in ['nagad', 'bkash', 'rocket'] &&
+             data.amount is number && data.amount > 0 &&
+             data.status == 'pending'; // Users can only create pending transactions
+    }
+
+    function isValidBet(data) {
+      return data.keys().hasAll(['uid', 'gameName', 'amount', 'profit', 'createdAt']) &&
+             data.uid == request.auth.uid &&
+             data.gameName is string &&
+             data.amount is number &&
+             data.profit is number;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data);
+    }
+
+    match /usernames/{username} {
+      allow get: if true; // Allow unauthenticated lookup for login
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow update: if isAuthenticated() && resource.data.uid == request.auth.uid;
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isAuthenticated() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidTransaction(request.resource.data);
+      allow update: if isAdmin(); // Only admins can approve/reject transactions
+    }
+
+    match /bets/{betId} {
+      allow read: if isAuthenticated() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidBet(request.resource.data);
+      allow update: if isAdmin();
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
