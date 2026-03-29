@@ -11,6 +11,9 @@ export interface UserData {
   captchaInvalidUntil?: string;
   freeSpins?: number;
   lastSpinDate?: string;
+  turnover?: number;
+  hasDepositedAfter8k?: boolean;
+  bonusReturned?: boolean;
   role?: 'admin' | 'user';
 }
 

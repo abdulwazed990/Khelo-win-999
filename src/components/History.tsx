@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { UserData, Transaction, Bet } from '../types';
-import { motion, AnimatePresence } from 'framer-motion';
+import { toBengaliNumber, formatBengaliCurrency } from '../utils';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   History as HistoryIcon, 
   TrendingUp, 
@@ -95,7 +96,7 @@ export default function HistoryPage({ userData }: HistoryProps) {
             {tab === 'bets' ? 'Game Betting History' : 'Transaction History'}
           </h3>
           <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-            {tab === 'bets' ? `${bets.length} Records` : `${transactions.length} Records`}
+            {tab === 'bets' ? `${toBengaliNumber(bets.length)} টি রেকর্ড` : `${toBengaliNumber(transactions.length)} টি রেকর্ড`}
           </span>
         </div>
 
@@ -126,11 +127,11 @@ export default function HistoryPage({ userData }: HistoryProps) {
                           <span className="font-bold text-gray-900">{bet.gameName}</span>
                         </div>
                       </td>
-                      <td className="px-8 py-6 font-bold text-gray-600">৳{bet.amount.toLocaleString()}</td>
+                      <td className="px-8 py-6 font-bold text-gray-600">৳{formatBengaliCurrency(bet.amount)}</td>
                       <td className="px-8 py-6">
                         <div className={`flex items-center gap-1 font-black ${bet.profit >= 0 ? 'text-green-500' : 'text-red-500'}`}>
                           {bet.profit >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
-                          ৳{Math.abs(bet.profit).toLocaleString()}
+                          ৳{formatBengaliCurrency(Math.abs(bet.profit))}
                         </div>
                       </td>
                       <td className="px-8 py-6 text-xs text-gray-400 font-medium">
@@ -181,7 +182,7 @@ export default function HistoryPage({ userData }: HistoryProps) {
                       <td className="px-8 py-6">
                         <span className="font-bold text-gray-600 capitalize">{tx.method}</span>
                       </td>
-                      <td className="px-8 py-6 font-black text-gray-900">৳{tx.amount.toLocaleString()}</td>
+                      <td className="px-8 py-6 font-black text-gray-900">৳{formatBengaliCurrency(tx.amount)}</td>
                       <td className="px-8 py-6">
                         <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
                           tx.status === 'approved' ? 'bg-green-50 text-green-600 border border-green-100' :

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserData } from '../types';
-import { motion } from 'framer-motion';
+import { toBengaliNumber, formatBengaliCurrency } from '../utils';
+import { motion } from 'motion/react';
 import { 
   User as UserIcon, 
   Phone, 
@@ -50,7 +51,7 @@ export default function Profile({ userData, onSignOut, setCurrentPage }: Profile
           <div className="flex flex-col items-center sm:items-end gap-2 shrink-0">
             <div className="text-right">
               <p className="text-[10px] font-black uppercase text-gray-400 text-center sm:text-right">Total Balance</p>
-              <p className="text-3xl font-black text-blue-900">৳{userData.balance.toLocaleString()}</p>
+              <p className="text-3xl font-black text-blue-900">৳{formatBengaliCurrency(userData.balance)}</p>
             </div>
             <button 
               onClick={onSignOut}
@@ -106,7 +107,7 @@ export default function Profile({ userData, onSignOut, setCurrentPage }: Profile
         
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <InfoItem icon={<UserIcon size={16} />} label="Full Name" value={userData.name} />
-          <InfoItem icon={<Phone size={16} />} label="Phone" value={userData.phone || 'Not set'} />
+          <InfoItem icon={<Phone size={16} />} label="Phone" value={userData.phone ? toBengaliNumber(userData.phone) : 'Not set'} />
           <InfoItem icon={<Mail size={16} />} label="Email" value={userData.email} />
           <div className="relative">
             <InfoItem 

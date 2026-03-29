@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, signOut } from 'firebase/auth';
 import { doc, setDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { UserPlus, LogIn, Phone, Mail, User as UserIcon, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
 
 interface AuthProps {

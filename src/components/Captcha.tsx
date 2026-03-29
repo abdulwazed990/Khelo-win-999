@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { doc, updateDoc, increment, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { UserData } from '../types';
-import { motion, AnimatePresence } from 'framer-motion';
+import { toBengaliNumber } from '../utils';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Gamepad2, 
   CheckCircle2, 
@@ -78,7 +79,7 @@ export default function Captcha({ userData }: CaptchaProps) {
       setLoading(false);
     } else {
       // Final step completed
-      const randomReward = Math.floor(Math.random() * 46) + 5; // 5 to 50
+      const randomReward = Math.floor(Math.random() * 11) + 5; // 5 to 15
       setReward(randomReward);
       try {
         await updateDoc(doc(db, 'users', userData.uid), {
@@ -142,7 +143,7 @@ export default function Captcha({ userData }: CaptchaProps) {
         <p className="text-gray-500 font-medium mb-8">You have successfully completed all captchas.</p>
         <div className="bg-green-50 p-6 rounded-3xl mb-8">
           <p className="text-green-600 text-xs font-black uppercase tracking-widest mb-1">Reward Added</p>
-          <h4 className="text-4xl font-black text-green-900">৳{reward}</h4>
+          <h4 className="text-4xl font-black text-green-900">৳{toBengaliNumber(reward)}</h4>
         </div>
         <button 
           onClick={() => window.location.reload()}
@@ -176,7 +177,7 @@ export default function Captcha({ userData }: CaptchaProps) {
               ></div>
             ))}
           </div>
-          <span className="text-xs font-black text-blue-600 uppercase tracking-widest">Step {step} of 3</span>
+          <span className="text-xs font-black text-blue-600 uppercase tracking-widest">ধাপ {toBengaliNumber(step)} এর ৩</span>
         </div>
 
         <div className="bg-gray-50 p-8 rounded-3xl mb-8 flex flex-col items-center justify-center relative overflow-hidden group">

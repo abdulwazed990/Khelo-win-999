@@ -3,10 +3,10 @@ import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { doc, getDoc, onSnapshot, setDoc, updateDoc, collection, query, where, orderBy } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { UserData, Transaction, Bet } from './types';
-import { motion, AnimatePresence } from 'framer-motion';
+import { toBengaliNumber, formatBengaliCurrency } from './utils';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Home as HomeIcon, 
-  Gift, 
   User as UserIcon, 
   History, 
   Wallet, 
@@ -23,20 +23,24 @@ import {
   Clock,
   ChevronRight,
   Menu,
-  X
+  X,
+  RotateCw
 } from 'lucide-react';
 import { format } from 'date-fns';
 
 // Components
 import Auth from './components/Auth';
 import Home from './components/Home';
-import Bonus from './components/Bonus';
+import FreeSpin from './components/Bonus';
 import Captcha from './components/Captcha';
 import Profile from './components/Profile';
 import Transactions from './components/Transactions';
 import HistoryPage from './components/History';
+import BoxerKingGame from './components/BoxerKingGame';
+import PokieSuperAceGame from './components/PokieSuperAceGame';
+import AviatorJetGame from './components/AviatorJetGame';
 
-export type Page = 'home' | 'bonus' | 'captcha' | 'profile' | 'transactions' | 'history';
+export type Page = 'home' | 'free-spin' | 'captcha' | 'profile' | 'transactions' | 'history' | 'game' | 'pokie-super-ace' | 'aviator-jet';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -97,16 +101,34 @@ export default function App() {
   const renderPage = () => {
     if (!user) return <Home user={null} userData={null} setCurrentPage={setCurrentPage} onAuthTrigger={(mode) => { setAuthMode(mode); setShowAuth(true); }} />;
     
+    console.log('Rendering page:', currentPage);
     switch (currentPage) {
       case 'home': return <Home user={user} userData={userData} setCurrentPage={setCurrentPage} onAuthTrigger={(mode) => { setAuthMode(mode); setShowAuth(true); }} />;
-      case 'bonus': return <Bonus userData={userData} />;
+      case 'free-spin': return <FreeSpin userData={userData} />;
       case 'captcha': return <Captcha userData={userData} />;
       case 'profile': return <Profile userData={userData} onSignOut={() => signOut(auth)} setCurrentPage={setCurrentPage} />;
       case 'transactions': return <Transactions userData={userData} />;
       case 'history': return <HistoryPage userData={userData} />;
+      case 'game': 
+        console.log('Rendering BoxerKingGame');
+        return <BoxerKingGame user={user} userData={userData} onBack={() => setCurrentPage('home')} />;
+      case 'pokie-super-ace':
+        return <PokieSuperAceGame user={user} userData={userData} onBack={() => setCurrentPage('home')} />;
+      case 'aviator-jet':
+        return <AviatorJetGame user={user} userData={userData} onBack={() => setCurrentPage('home')} />;
       default: return <Home user={user} userData={userData} setCurrentPage={setCurrentPage} onAuthTrigger={(mode) => { setAuthMode(mode); setShowAuth(true); }} />;
     }
   };
+
+  const isGamePage = currentPage === 'game' || currentPage === 'pokie-super-ace' || currentPage === 'aviator-jet';
+
+  if (isGamePage) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-black overflow-hidden">
+        {renderPage()}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans">
@@ -114,9 +136,12 @@ export default function App() {
       <header className="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => setCurrentPage('home')}>
-            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-200">
-              K
-            </div>
+            <img 
+              src="https://st4.depositphotos.com/3042225/20760/v/450/depositphotos_207603474-stock-illustration-casino-logotype-template-chip-isolated.jpg" 
+              alt="Logo" 
+              className="w-10 h-10 object-contain mix-blend-multiply"
+              referrerPolicy="no-referrer"
+            />
             <span className="text-xl font-black tracking-tighter text-blue-900">KHELO WIN <span className="text-blue-600">999</span></span>
           </div>
 
@@ -125,7 +150,7 @@ export default function App() {
               <div className="flex items-center gap-3 bg-blue-50 px-4 py-2 rounded-full border border-blue-100">
                 <div className="flex flex-col items-end">
                   <span className="text-[10px] uppercase font-bold text-blue-400 leading-none">Balance</span>
-                  <span className="text-lg font-black text-blue-900">৳{userData?.balance.toLocaleString()}</span>
+                  <span className="text-lg font-black text-blue-900">৳{userData ? formatBengaliCurrency(userData.balance) : toBengaliNumber(0)}</span>
                 </div>
                 <button 
                   onClick={handleRefreshBalance}
@@ -136,7 +161,7 @@ export default function App() {
               </div>
               <nav className="flex items-center gap-1">
                 <NavButton active={currentPage === 'home'} onClick={() => setCurrentPage('home')} icon={<HomeIcon size={20} />} label="Home" />
-                <NavButton active={currentPage === 'bonus'} onClick={() => setCurrentPage('bonus')} icon={<Gift size={20} />} label="Bonus" />
+                <NavButton active={currentPage === 'free-spin'} onClick={() => setCurrentPage('free-spin')} icon={<RotateCw size={20} />} label="Free Spin" />
                 <NavButton active={currentPage === 'captcha'} onClick={() => setCurrentPage('captcha')} icon={<Gamepad2 size={20} />} label="Captcha" />
                 <NavButton active={currentPage === 'history'} onClick={() => setCurrentPage('history')} icon={<History size={20} />} label="History" />
                 <NavButton active={currentPage === 'profile'} onClick={() => setCurrentPage('profile')} icon={<UserIcon size={20} />} label="Profile" />
@@ -178,13 +203,13 @@ export default function App() {
           >
             <div className="flex flex-col gap-2">
               <MobileNavButton active={currentPage === 'home'} onClick={() => { setCurrentPage('home'); setIsMenuOpen(false); }} icon={<HomeIcon />} label="Home" />
-              <MobileNavButton active={currentPage === 'bonus'} onClick={() => { setCurrentPage('bonus'); setIsMenuOpen(false); }} icon={<Gift />} label="Bonus" />
+              <MobileNavButton active={currentPage === 'free-spin'} onClick={() => { setCurrentPage('free-spin'); setIsMenuOpen(false); }} icon={<RotateCw />} label="Free Spin" />
               <MobileNavButton active={currentPage === 'captcha'} onClick={() => { setCurrentPage('captcha'); setIsMenuOpen(false); }} icon={<Gamepad2 />} label="Captcha" />
               <MobileNavButton active={currentPage === 'history'} onClick={() => { setCurrentPage('history'); setIsMenuOpen(false); }} icon={<History />} label="History" />
               <MobileNavButton active={currentPage === 'profile'} onClick={() => { setCurrentPage('profile'); setIsMenuOpen(false); }} icon={<UserIcon />} label="Profile" />
               <div className="mt-4 p-4 bg-blue-50 rounded-2xl flex justify-between items-center">
                 <span className="font-bold text-blue-900">Total Balance</span>
-                <span className="text-xl font-black text-blue-600">৳{userData?.balance.toLocaleString()}</span>
+                <span className="text-xl font-black text-blue-600">৳{userData ? formatBengaliCurrency(userData.balance) : toBengaliNumber(0)}</span>
               </div>
             </div>
           </motion.div>
@@ -234,7 +259,12 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="col-span-1 md:col-span-2">
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-lg">K</div>
+              <img 
+                src="https://st4.depositphotos.com/3042225/20760/v/450/depositphotos_207603474-stock-illustration-casino-logotype-template-chip-isolated.jpg" 
+                alt="Logo" 
+                className="w-8 h-8 object-contain mix-blend-multiply"
+                referrerPolicy="no-referrer"
+              />
               <span className="text-lg font-black tracking-tighter text-blue-900">KHELO WIN 999</span>
             </div>
             <p className="text-gray-500 text-sm max-w-md">

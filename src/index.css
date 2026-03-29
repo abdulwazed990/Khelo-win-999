@@ -1,1 +1,55 @@
 @import "tailwindcss";
+
+@layer utilities {
+  .reel-container { position: relative; height: 100%; overflow: hidden; }
+  .reel-strip { display: flex; flex-direction: column; gap: 8px; transition: transform 0.1s linear; }
+  
+  /* Realistic Reel Blur & Spin */
+  .reel-blur { filter: blur(8px); transform: scaleX(0.9); }
+  
+  .win-glow { 
+    box-shadow: 0 0 30px #fbbf24, inset 0 0 20px #fbbf24; 
+    border-color: #fbbf24 !important; 
+    animation: pulse 0.4s infinite; 
+  }
+  @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+  
+  /* Cascading Pop Animation */
+  .symbol-pop { animation: pop 0.4s ease-out forwards; }
+  @keyframes pop { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.8); opacity: 0; } }
+  
+  .big-win-title { 
+    background: linear-gradient(to bottom, #fff, #fbbf24, #d97706); 
+    -webkit-background-clip: text; 
+    -webkit-text-fill-color: transparent; 
+    filter: drop-shadow(0 0 30px rgba(217, 119, 6, 0.9)); 
+    font-style: italic; 
+  }
+
+  .reel-spinning {
+    filter: blur(4px);
+    animation: spin 0.1s linear infinite;
+  }
+
+  @keyframes spin {
+    from { transform: translateY(0); }
+    to { transform: translateY(-50%); }
+  }
+
+  .win-highlight {
+    box-shadow: 0 0 25px #fbbf24, inset 0 0 15px #fbbf24;
+    border-color: #fbbf24 !important;
+    z-index: 20;
+  }
+
+  .big-win-text {
+    background: linear-gradient(to bottom, #fff, #fbbf24, #d97706);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 20px rgba(217, 119, 6, 0.8));
+  }
+
+  .slot-container {
+    mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+  }
+}

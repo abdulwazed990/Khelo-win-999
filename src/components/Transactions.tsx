@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { collection, addDoc, doc, updateDoc, increment } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { UserData } from '../types';
-import { motion, AnimatePresence } from 'framer-motion';
+import { toBengaliNumber, formatBengaliCurrency } from '../utils';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Wallet, 
   ArrowDownLeft, 
@@ -56,6 +57,14 @@ export default function Transactions({ userData }: TransactionsProps) {
         transactionId,
         createdAt: new Date().toISOString()
       });
+
+      // If user has 8000 balance and deposits 2500, mark as deposited after 8k
+      if (userData.balance >= 8000 && Number(amount) >= 2500) {
+        await updateDoc(doc(db, 'users', userData.uid), {
+          hasDepositedAfter8k: true
+        });
+      }
+
       setSuccess(true);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'transactions');
@@ -71,7 +80,12 @@ export default function Transactions({ userData }: TransactionsProps) {
     
     // Withdrawal rules
     if (userData.balance < 8000) {
-      setError('উইথড্র করার জন্য আপনার ব্যালেন্স কমপক্ষে ৮,০০০ টাকা হতে হবে।');
+      setError('উইথড্র করার জন্য আপনার ব্যালেন্স কমপক্ষে ৳৮,০০০ হতে হবে।');
+      return;
+    }
+
+    if (!userData.hasDepositedAfter8k || (userData.turnover || 0) < 200) {
+      setError('আপনাকে ২৫০০ টাকা ডিপোজিট করে ২০০ টাকার টার্নওভার কমপ্লিট করতে হবে।');
       return;
     }
     
@@ -79,11 +93,25 @@ export default function Transactions({ userData }: TransactionsProps) {
     setError('');
 
     try {
+      const withdrawAmount = Number(amount);
+      
+      // If bonus hasn't been returned yet, deduct it from balance
+      if (!userData.bonusReturned) {
+        await updateDoc(doc(db, 'users', userData.uid), {
+          balance: increment(-(withdrawAmount + 2300)),
+          bonusReturned: true
+        });
+      } else {
+        await updateDoc(doc(db, 'users', userData.uid), {
+          balance: increment(-withdrawAmount)
+        });
+      }
+
       await addDoc(collection(db, 'transactions'), {
         uid: userData.uid,
         type: 'withdraw',
         method,
-        amount: Number(amount),
+        amount: withdrawAmount,
         status: 'pending',
         senderNumber, // This will be the recipient number for withdrawals
         createdAt: new Date().toISOString()
@@ -188,7 +216,7 @@ export default function Transactions({ userData }: TransactionsProps) {
               </div>
               <div>
                 <p className="text-[10px] font-black uppercase text-blue-400">Nagad Personal Number</p>
-                <p className="text-xl font-black text-blue-900">01340772478</p>
+                <p className="text-xl font-black text-blue-900">{toBengaliNumber('01340772478')}</p>
               </div>
             </div>
             <p className="text-xs text-blue-600 font-medium leading-relaxed">
@@ -197,13 +225,58 @@ export default function Transactions({ userData }: TransactionsProps) {
           </div>
         )}
 
-        {tab === 'withdraw' && userData.balance < 8000 && (
-          <div className="mb-8 p-6 bg-red-50 rounded-3xl border border-red-100 flex items-start gap-4">
-            <AlertCircle className="text-red-600 shrink-0" size={24} />
-            <p className="text-sm text-red-600 font-bold leading-relaxed">
-              আট হাজার টাকা কমপ্লিট হওয়ার পর উইথড্র অপশন চালু হবে। বর্তমানে আপনার ব্যালেন্স ৳{userData.balance.toLocaleString()}।
-            </p>
-          </div>
+        {tab === 'withdraw' && (
+          <>
+            {userData.balance < 8000 ? (
+              <div className="mb-8 p-6 bg-red-50 rounded-3xl border border-red-100 flex items-start gap-4 shadow-sm">
+                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center text-red-600 shrink-0">
+                  <AlertCircle size={20} />
+                </div>
+                <div className="space-y-3 w-full">
+                  <div className="space-y-1">
+                    <p className="text-sm text-red-900 font-black leading-relaxed">
+                      <span className="text-red-600">৳{toBengaliNumber(8000)}</span> ব্যালেন্স হওয়ার পর আপনার উইথড্রল অপশন চালু হবে।
+                    </p>
+                    <p className="text-xs text-red-500 font-bold">
+                      বর্তমানে আপনার ব্যালেন্স: <span className="text-red-700">৳{formatBengaliCurrency(userData.balance)}</span>
+                    </p>
+                  </div>
+                  
+                  {/* Progress Bar */}
+                  <div className="space-y-1.5">
+                    <div className="h-2 w-full bg-red-100 rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.min((userData.balance / 8000) * 100, 100)}%` }}
+                        className="h-full bg-red-500 rounded-full"
+                      />
+                    </div>
+                    <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-red-400">
+                      <span>Progress</span>
+                      <span>{toBengaliNumber(Math.floor(Math.min((userData.balance / 8000) * 100, 100)))}%</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (!userData.hasDepositedAfter8k || (userData.turnover || 0) < 200) ? (
+              <div className="mb-8 p-6 bg-orange-50 rounded-3xl border border-orange-100 flex items-start gap-4">
+                <AlertCircle className="text-orange-600 shrink-0" size={24} />
+                <div className="space-y-2">
+                  <p className="text-sm text-orange-600 font-bold leading-relaxed">
+                    আপনাকে ২৫০০ টাকা ডিপোজিট করে ২০০ টাকার টার্নওভার কমপ্লিট করতে হবে।
+                  </p>
+                  <div className="flex gap-4 text-[10px] font-black uppercase tracking-widest">
+                    <span className={userData.hasDepositedAfter8k ? 'text-green-600' : 'text-orange-400'}>
+                      Deposit: {userData.hasDepositedAfter8k ? 'COMPLETED' : 'PENDING'}
+                    </span>
+                    <span className={(userData.turnover || 0) >= 200 ? 'text-green-600' : 'text-orange-400'}>
+                      Turnover: {toBengaliNumber(userData.turnover || 0)}/{toBengaliNumber(200)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </>
         )}
 
         <form onSubmit={tab === 'deposit' ? handleDeposit : handleWithdraw} className="space-y-6">
@@ -265,7 +338,7 @@ export default function Transactions({ userData }: TransactionsProps) {
 
           <button 
             type="submit"
-            disabled={loading || (tab === 'withdraw' && userData.balance < 8000)}
+            disabled={loading || (tab === 'withdraw' && (userData.balance < 8000 || !userData.hasDepositedAfter8k || (userData.turnover || 0) < 200))}
             className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
           >
             {loading ? (
