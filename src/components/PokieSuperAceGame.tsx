@@ -397,7 +397,7 @@ const StartScreen = ({ onPlay }: { onPlay: () => void }) => {
         <div className="text-center">
           <h2 className="text-6xl font-black italic tracking-tighter text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">SuperAce</h2>
           <div className="flex justify-center gap-2 mt-2">
-            {[1, 2, 3, 5].map(m => (
+            {MULTIPLIERS.map(m => (
               <span key={m} className="text-yellow-500 font-black text-lg">x{m}</span>
             ))}
           </div>
@@ -522,6 +522,15 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
     return saved ? parseInt(saved, 10) : 0;
   });
 
+  const [sessionStats, setSessionStats] = useState(() => {
+    const saved = localStorage.getItem('super_ace_session_stats');
+    return saved ? JSON.parse(saved) : { totalBet: 0, totalWin: 0, spinsSinceLastBigWin: 0 };
+  });
+
+  useEffect(() => {
+    localStorage.setItem('super_ace_session_stats', JSON.stringify(sessionStats));
+  }, [sessionStats]);
+
   useEffect(() => {
     localStorage.setItem('super_ace_total_spins', totalSpins.toString());
   }, [totalSpins]);
@@ -584,60 +593,84 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       randomSymbol = SYMBOLS.find(s => s.id === forceSymbolId)!;
     } else {
       const currentSpinCount = spinCountRef.current;
+      const isFS = isFreeSpinModeRef.current;
       
-      // Realistic progression: Wins start small and grow
-      // Early game (0-15 spins): Low chance of high symbols, low chance of scatters
-      // Mid game (15-40 spins): Normal chances
-      // Late game (40+ spins): Slightly better chances for excitement
+      // RTP-based probability adjustment
+      const rtp = sessionStats.totalBet > 0 ? sessionStats.totalWin / sessionStats.totalBet : 0.95;
+      const isOverpaying = rtp > 0.98;
+      const isUnderpaying = rtp < 0.85;
+
+      // Base probabilities
+      let scatterProb = isFS ? 0.01 : 0.015;
+      let wildProb = 0.02;
       
-      const isEarlyGame = currentSpinCount < 15;
-      const isMidGame = currentSpinCount >= 15 && currentSpinCount < 40;
-      
-      // Dead spin probability: Higher in early game to prevent constant wins
-      const deadSpinProb = isEarlyGame ? 0.4 : (isMidGame ? 0.2 : 0.1);
-      const isDeadSpin = Math.random() < deadSpinProb;
-      
-      let scatterProb = 0.015; // Default
-      if (isEarlyGame) scatterProb = 0.001; // Extremely low
-      else if (isMidGame) scatterProb = 0.005; // Low
-      
-      const scatterLimit = isEarlyGame ? 1 : (isMidGame ? 3 : 5);
-      const isScatter = !isDeadSpin && Math.random() < scatterProb && currentScatters < scatterLimit;
+      // Adjust probabilities based on RTP
+      if (isOverpaying) {
+        scatterProb *= 0.5;
+        wildProb *= 0.7;
+      } else if (isUnderpaying) {
+        scatterProb *= 1.5;
+        wildProb *= 1.3;
+      }
+
+      const isScatter = Math.random() < scatterProb && currentScatters < 5;
       
       if (isScatter) {
         randomSymbol = SCATTER_SYMBOL;
       } else {
-        // Filter out high value symbols in early game
-        let availableSymbols = SYMBOLS.filter(s => !s.isScatter && !s.isWild);
-        
-        if (isEarlyGame) {
-          // Only low symbols: 10, 9, 8, 7 (ids 5, 6, 7, 8)
-          availableSymbols = availableSymbols.filter(s => s.value <= 2.0);
-        } else if (isMidGame) {
-          // Up to Jack/Queen: 10, 9, 8, 7, Jack, Queen (ids 5, 6, 7, 8, 4, 3)
-          availableSymbols = availableSymbols.filter(s => s.value <= 3.0);
+        const isWild = Math.random() < wildProb;
+        if (isWild && colIndex !== undefined && colIndex >= 1) { // Wilds usually not on reel 1
+          randomSymbol = WILD_SYMBOL;
+        } else {
+          // Weighted symbol selection
+          // Low symbols (5-8) are more frequent
+          // High symbols (2-4, 9) are less frequent
+          const weights = [
+            { id: 2, weight: 5 },  // King
+            { id: 3, weight: 8 },  // Queen
+            { id: 4, weight: 10 }, // Jack
+            { id: 5, weight: 20 }, // 10
+            { id: 6, weight: 25 }, // 9
+            { id: 7, weight: 30 }, // 8
+            { id: 8, weight: 35 }, // 7
+            { id: 9, weight: 5 },  // Ace
+          ];
+
+          // Adjust weights based on RTP
+          if (isOverpaying) {
+            weights.find(w => w.id === 2)!.weight = 2;
+            weights.find(w => w.id === 9)!.weight = 2;
+          }
+
+          const totalWeight = weights.reduce((sum, w) => sum + w.weight, 0);
+          let rand = Math.random() * totalWeight;
+          let selectedId = 8; // Default to lowest
+          for (const w of weights) {
+            if (rand < w.weight) {
+              selectedId = w.id;
+              break;
+            }
+            rand -= w.weight;
+          }
+          randomSymbol = SYMBOLS.find(s => s.id === selectedId)!;
         }
-        
-        randomSymbol = availableSymbols[Math.floor(Math.random() * availableSymbols.length)];
       }
     }
     
-    // Golden symbols are also rare in early game and only on reels 2, 3, 4
-    const currentSpinCount = spinCountRef.current;
     const isGoldenEligibleReel = colIndex !== undefined && colIndex >= 1 && colIndex <= 3;
-    const goldenProb = currentSpinCount < 15 ? 0.995 : (currentSpinCount < 40 ? 0.98 : 0.95);
+    const goldenProb = isFreeSpinModeRef.current ? 0.15 : 0.08;
     
     return {
       id: `${Math.random().toString(36).substr(2, 9)}-${Date.now()}-${symbolCounter.current}`,
       symbolId: randomSymbol.id,
-      isGolden: !randomSymbol.isScatter && isGoldenEligibleReel && Math.random() > goldenProb,
+      isGolden: !randomSymbol.isScatter && !randomSymbol.isWild && isGoldenEligibleReel && Math.random() < goldenProb,
       isWild: randomSymbol.isWild || false,
       isScatter: randomSymbol.isScatter || false,
       url: randomSymbol.url,
       isRevealed: !forceMystery,
       isMystery: forceMystery
     };
-  }, []);
+  }, [sessionStats]);
 
   const checkWins = useCallback((currentGrid: SymbolInstance[][], currentMultiplierIdx: number, isFreeSpin: boolean, currentBet: number) => {
     const winningPositions: { col: number; row: number }[] = [];
@@ -768,7 +801,14 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       const isFS = isFreeSpinModeRef.current;
       const currentBet = betRef.current;
       
-      const { winningPositions, totalWin, scatterCount, scatterPositions, totalWays: ways } = checkWins(currentGrid, multiplierIdx, isFS, currentBet);
+      let { winningPositions, totalWin, scatterCount, scatterPositions, totalWays: ways } = checkWins(currentGrid, multiplierIdx, isFS, currentBet);
+      
+      // Payout Cap Logic: Ensure no single spin exceeds 500x bet
+      const maxSpinWin = currentBet * 500;
+      if (accumulatedWin + totalWin > maxSpinWin) {
+        totalWin = Math.max(0, maxSpinWin - accumulatedWin);
+      }
+
       const newAccumulatedWin = accumulatedWin + totalWin;
 
       if (winningPositions.length > 0) {
@@ -791,6 +831,13 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
             handleFirestoreError(err, OperationType.UPDATE, 'users');
           }
         }
+        
+        setSessionStats(prev => ({
+          ...prev,
+          totalWin: prev.totalWin + totalWin,
+          spinsSinceLastBigWin: totalWin > currentBet * 10 ? 0 : prev.spinsSinceLastBigWin
+        }));
+
         setLastWin(totalWin);
         setCombo(currentCombo + 1);
         
@@ -951,11 +998,15 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       }
     } else if (type === 'big_fs') {
       // Force a big win for free spins (multiple 4-of-a-kind or 5-of-a-kind)
-      const winSym = SYMBOLS[Math.floor(Math.random() * 3) + 1]; // High value symbols
+      // Keep it realistic: Jack, Queen, King or Ace
+      const availableHighSymbols = SYMBOLS.filter(s => !s.isScatter && !s.isWild && s.value >= 2.5);
+      const winSym = availableHighSymbols[Math.floor(Math.random() * availableHighSymbols.length)];
       const row1 = Math.floor(Math.random() * ROWS);
-      const row2 = (row1 + 1) % ROWS;
       
-      for (let c = 0; c < 4; c++) {
+      // 4-of-a-kind is common, 5-of-a-kind is rare
+      const winLength = Math.random() < 0.8 ? 4 : 5;
+      
+      for (let c = 0; c < winLength; c++) {
         grid[c][row1] = {
           ...getRandomSymbol(false, 0, false, undefined, c),
           symbolId: winSym.id,
@@ -965,18 +1016,6 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
           isRevealed: true,
           id: Math.random().toString(36).substr(2, 9)
         };
-        if (c < 3) {
-          const nextSym = SYMBOLS.find(s => s.id === winSym.id + 1) || winSym;
-          grid[c][row2] = {
-            ...getRandomSymbol(false, 0, false, undefined, c),
-            symbolId: nextSym.id,
-            isScatter: false,
-            isWild: false,
-            url: nextSym.url,
-            isRevealed: true,
-            id: Math.random().toString(36).substr(2, 9)
-          };
-        }
       }
     }
 
@@ -1026,6 +1065,12 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
         }
         spinCountRef.current += 1;
         setSpinCount(spinCountRef.current);
+        
+        setSessionStats(prev => ({
+          ...prev,
+          totalBet: prev.totalBet + currentBet,
+          spinsSinceLastBigWin: prev.spinsSinceLastBigWin + 1
+        }));
       } else if (currentFS > 0) {
         setFreeSpins(prev => prev - 1);
       }
@@ -1033,55 +1078,34 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       let newGrid: SymbolInstance[][] = [];
       let currentScatters = 0;
 
-      // 1. Retention Logic: First 25-30 spins
-      if (!isFS && totalSpins < 25) {
-        if (totalSpins % 5 === 0) {
-          newGrid = generateRiggedGrid('small', currentScatters);
-        } else {
-          newGrid = Array(COLS).fill(null).map((_, c) => 
-            Array(ROWS).fill(null).map(() => {
-              const sym = getRandomSymbol(false, currentScatters, false, undefined, c);
-              if (sym.isScatter) currentScatters++;
-              return sym;
-            })
-          );
-        }
-      } 
-      // 2. Retention Logic: Trigger Free Spins at spin 26-30
-      else if (!isFS && totalSpins >= 26 && totalSpins <= 30 && currentFS === 0 && !hasHadFreeSpins) {
+      // Realistic Outcome Logic
+      const rtp = sessionStats.totalBet > 0 ? sessionStats.totalWin / sessionStats.totalBet : 0.95;
+      const outcomeRand = Math.random();
+      
+      let forceType: 'none' | 'small' | 'scatter' | 'big_fs' = 'none';
+      
+      if (isFS) {
+        // Free spin logic: More frequent medium wins, rare massive wins
+        if (outcomeRand < 0.05) forceType = 'big_fs';
+        else if (outcomeRand < 0.3) forceType = 'small';
+      } else {
+        // Normal spin logic
+        // 1. Scatter trigger (Free Spins)
+        const scatterChance = sessionStats.spinsSinceLastBigWin > 40 ? 0.05 : 0.015;
+        if (outcomeRand < scatterChance && !hasHadFreeSpins) forceType = 'scatter';
+        // 2. Small/Medium wins
+        else if (outcomeRand < 0.25) forceType = 'small';
+        // 3. Dead spins (frequent)
+        else forceType = 'none';
+      }
+
+      if (forceType === 'small') {
+        newGrid = generateRiggedGrid('small', currentScatters);
+      } else if (forceType === 'scatter') {
         newGrid = generateRiggedGrid('scatter', currentScatters);
-      }
-      // 3. Free Spin Rigging (First session is better)
-      else if (isFS) {
-        const chance = !hasHadFreeSpins ? 0.4 : 0.2;
-        if (Math.random() < chance) {
-          newGrid = generateRiggedGrid('big_fs', currentScatters);
-        } else {
-          newGrid = Array(COLS).fill(null).map((_, c) => 
-            Array(ROWS).fill(null).map(() => {
-              const sym = getRandomSymbol(false, currentScatters, false, undefined, c);
-              if (sym.isScatter) currentScatters++;
-              return sym;
-            })
-          );
-        }
-      }
-      // 4. Scatter Tease (2 Scatters)
-      else if (!isFS && totalSpins % 12 === 0 && Math.random() > 0.5) {
-        newGrid = Array(COLS).fill(null).map((_, c) => 
-          Array(ROWS).fill(null).map(() => getRandomSymbol(false, 0, false, undefined, c))
-        );
-        let placed = 0;
-        while (placed < 2) {
-          const c = Math.floor(Math.random() * COLS);
-          const r = Math.floor(Math.random() * ROWS);
-          if (!newGrid[c][r].isScatter) {
-            newGrid[c][r] = getRandomSymbol(true, placed, false, undefined, c);
-            placed++;
-          }
-        }
-      }
-      else {
+      } else if (forceType === 'big_fs') {
+        newGrid = generateRiggedGrid('big_fs', currentScatters);
+      } else {
         newGrid = Array(COLS).fill(null).map((_, c) => 
           Array(ROWS).fill(null).map(() => {
             const sym = getRandomSymbol(false, currentScatters, false, undefined, c);

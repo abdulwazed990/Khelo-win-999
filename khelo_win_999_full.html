@@ -147,7 +147,7 @@
                             username: formData.username,
                             email: signupEmail,
                             phone: formData.phone || '',
-                            balance: 2300,
+                            balance: 888,
                             bonus: 0,
                             captchaRewards: 0,
                             role: 'user',
@@ -156,7 +156,7 @@
                             lastDailyBonusAt: null,
                             welcomeBonusClaimed: true,
                             captchaLockoutUntil: null,
-                            freeSpins: 1,
+                            freeSpins: 0,
                             lastSpinDate: null
                         });
                     }
@@ -361,8 +361,7 @@
                 { label: '৳5', weight: 40, value: 5, type: 'money' },
                 { label: '৳15', weight: 20, value: 15, type: 'money' },
                 { label: '৳500', weight: 1, value: 500, type: 'money' },
-                { label: '5 SPINS', weight: 10, value: 5, type: 'spins' },
-                { label: '10 SPINS', weight: 5, value: 10, type: 'spins' },
+                { label: '৳2', weight: 15, value: 2, type: 'money' },
                 { label: 'TRY AGAIN', weight: 24, value: 0, type: 'none' }
             ];
 
@@ -372,7 +371,7 @@
                 const lastSpin = userData.lastSpinDate ? (userData.lastSpinDate.toDate ? userData.lastSpinDate.toDate() : new Date(userData.lastSpinDate)) : null;
                 const canSpin = !lastSpin || (new Date().getTime() - lastSpin.getTime() > 24 * 60 * 60 * 1000);
                 
-                if (!canSpin && (userData.freeSpins || 0) <= 0) {
+                if (!canSpin) {
                     alert('Next free spin available in 24 hours');
                     return;
                 }
@@ -401,12 +400,6 @@
 
                         if (selected.type === 'money') {
                             updates.balance = userData.balance + selected.value;
-                        } else if (selected.type === 'spins') {
-                            updates.freeSpins = (userData.freeSpins || 0) + selected.value;
-                        }
-
-                        if ((userData.freeSpins || 0) > 0 && !canSpin) {
-                            updates.freeSpins = (userData.freeSpins || 0) - 1;
                         }
 
                         await updateDoc(userRef, updates);
@@ -472,7 +465,7 @@
                             </div>
 
                             <button disabled={spinning} onClick={handleSpin} className="w-full gold-btn py-3 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50">
-                                {spinning ? <RefreshCw className="w-5 h-5 animate-spin" /> : `Spin Now (${userData?.freeSpins || 0} Free)`}
+                                {spinning ? <RefreshCw className="w-5 h-5 animate-spin" /> : `Spin Now`}
                             </button>
                         </div>
                     </div>

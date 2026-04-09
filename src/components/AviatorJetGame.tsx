@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, History, Minus, Plus } from 'lucide-react';
+import { X, History, Minus, Plus, Volume2, VolumeX } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface AviatorJetGameProps {
@@ -28,6 +28,10 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
   const [history, setHistory] = useState([1.24, 4.56, 1.02, 12.45, 2.33, 1.88, 5.4]);
   const [cashoutPopup, setCashoutPopup] = useState<{amount: number, mult: number} | null>(null);
   const [shake, setShake] = useState(false);
+  const [flash, setFlash] = useState(false);
+  const [pulse, setPulse] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
 
   const [bet1, setBet1] = useState<BetState>({
     amount: 10, isPlaced: false, isCashedOut: false, payout: 0, autoCashOut: 2, isAutoBet: false, isAutoCashOut: false
@@ -59,6 +63,105 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
     img.onload = () => { planeImageRef.current = img; };
     img.onerror = () => { console.error("Failed to load plane image."); };
   }, []);
+
+  const bgMusicRef = useRef<HTMLAudioElement | null>(null);
+  const flySoundRef = useRef<HTMLAudioElement | null>(null);
+  const crashSoundRef = useRef<HTMLAudioElement | null>(null);
+  const cashOutSoundRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    // Background Music - Light, atmospheric, and looping
+    bgMusicRef.current = new Audio("https://assets.mixkit.co/music/preview/mixkit-dreaming-big-31.mp3");
+    bgMusicRef.current.loop = true;
+    bgMusicRef.current.volume = 0.15;
+
+    // Flying Sound - Smooth jet engine loop
+    flySoundRef.current = new Audio("https://assets.mixkit.co/sfx/preview/mixkit-jet-engine-loop-2564.mp3");
+    flySoundRef.current.loop = true;
+    flySoundRef.current.volume = 0.15;
+
+    // Crash Sound - Professional impact explosion with reverb
+    crashSoundRef.current = new Audio("https://assets.mixkit.co/sfx/preview/mixkit-impact-explosion-with-hi-fi-reverb-2405.mp3");
+    crashSoundRef.current.volume = 0.5;
+
+    // Cash Out Sound - Success chime
+    cashOutSoundRef.current = new Audio("https://assets.mixkit.co/sfx/preview/mixkit-winning-chime-2029.mp3");
+    cashOutSoundRef.current.volume = 0.4;
+
+    const unlock = () => {
+      setAudioUnlocked(true);
+      if (bgMusicRef.current && !isMuted) {
+        bgMusicRef.current.play().catch(() => {});
+      }
+      window.removeEventListener('click', unlock);
+      window.removeEventListener('touchstart', unlock);
+    };
+
+    window.addEventListener('click', unlock);
+    window.addEventListener('touchstart', unlock);
+
+    return () => {
+      bgMusicRef.current?.pause();
+      flySoundRef.current?.pause();
+      crashSoundRef.current?.pause();
+      cashOutSoundRef.current?.pause();
+      window.removeEventListener('click', unlock);
+      window.removeEventListener('touchstart', unlock);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!audioUnlocked) return;
+
+    if (isMuted) {
+      bgMusicRef.current?.pause();
+      flySoundRef.current?.pause();
+      return;
+    }
+
+    // Background music should play continuously
+    bgMusicRef.current?.play().catch(() => {});
+
+    if (gameState === "WAITING") {
+      if (flySoundRef.current) {
+        flySoundRef.current.pause();
+        flySoundRef.current.currentTime = 0;
+      }
+    } else if (gameState === "IN_FLIGHT") {
+      flySoundRef.current?.play().catch(() => {});
+    } else if (gameState === "CRASHED") {
+      flySoundRef.current?.pause();
+      crashSoundRef.current?.play().catch(() => {});
+      
+      // Briefly duck music on crash for impact
+      if (bgMusicRef.current) bgMusicRef.current.volume = 0.05;
+      setTimeout(() => {
+        if (bgMusicRef.current && !isMuted) bgMusicRef.current.volume = 0.15;
+      }, 2000);
+    }
+  }, [gameState, isMuted, audioUnlocked]);
+
+  // Adjust flying sound pitch based on multiplier for "high experience"
+  useEffect(() => {
+    if (gameState === "IN_FLIGHT" && flySoundRef.current && !isMuted) {
+      // Increase playback rate slightly as multiplier goes up
+      const rate = Math.min(1 + (multiplier - 1) * 0.05, 2);
+      flySoundRef.current.playbackRate = rate;
+      // Also slightly increase volume
+      flySoundRef.current.volume = Math.min(0.2 + (multiplier - 1) * 0.02, 0.5);
+    }
+  }, [multiplier, gameState]);
+
+  useEffect(() => {
+    if (gameState === "IN_FLIGHT") {
+      const interval = setInterval(() => {
+        setPulse(p => p === 1 ? 1.05 : 1);
+      }, Math.max(100, 500 / multiplier));
+      return () => clearInterval(interval);
+    } else {
+      setPulse(1);
+    }
+  }, [gameState, multiplier]);
 
   const generateCrashMult = () => Math.random() < 0.05 ? 1 : parseFloat((1 / (1 - Math.random() * 0.99)).toFixed(2));
 
@@ -111,7 +214,9 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
           setMultiplier(crashMultRef.current);
           setHistory(it => [parseFloat(crashMultRef.current.toFixed(2)), ...it].slice(0, 10));
           setShake(true);
+          setFlash(true);
           setTimeout(() => setShake(false), 500);
+          setTimeout(() => setFlash(false), 200);
           setTimeout(resetGame, 3000);
           return;
         }
@@ -145,7 +250,7 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
   }, [gameState, countdown]);
 
   const placeBet = (b: number) => {
-    if (gameState !== "WAITING" || countdown <= 3) return;
+    if (gameState !== "WAITING" || countdown <= 2) return;
     const A = b === 1 ? bet1 : bet2;
     if (balance < A.amount) return;
     setBalance(q => q - A.amount);
@@ -162,6 +267,7 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
 
     if (X.current || !et.isPlaced || et.isCashedOut) return;
     X.current = true;
+    if (!isMuted) cashOutSoundRef.current?.play().catch(() => {});
     const it = et.amount * q;
     setBalance(Mt => Mt + it);
     setCashoutPopup({ amount: it, mult: q });
@@ -212,6 +318,11 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
 
       A.save();
       if (shake) A.translate((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10);
+      
+      if (flash) {
+        A.fillStyle = "rgba(255, 255, 255, 0.8)";
+        A.fillRect(0, 0, it, Mt);
+      }
 
       starsRef.current.forEach(Tt => {
         drawCloud(A, Tt.x, Tt.y, Tt.scale);
@@ -371,6 +482,34 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
 
   return (
     <div className="fixed inset-0 z-[100] bg-[#0a0a0a] text-white font-sans selection:bg-rose-500/30 overflow-hidden flex flex-col">
+      {/* Audio Unlock Overlay */}
+      <AnimatePresence>
+        {!audioUnlocked && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[200] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center cursor-pointer"
+            onClick={() => {
+              setAudioUnlocked(true);
+              if (bgMusicRef.current && !isMuted) {
+                bgMusicRef.current.play().catch(() => {});
+              }
+            }}
+          >
+            <motion.div 
+              animate={{ scale: [1, 1.1, 1] }}
+              transition={{ repeat: Infinity, duration: 2 }}
+              className="bg-rose-500 p-6 rounded-full shadow-[0_0_50px_rgba(225,29,72,0.5)] mb-6"
+            >
+              <Volume2 size={48} className="text-white" />
+            </motion.div>
+            <h2 className="text-2xl font-black italic uppercase tracking-tighter mb-2">Aviator Jet</h2>
+            <p className="text-gray-400 font-bold uppercase tracking-widest text-sm">Tap to Start Game & Audio</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <header className="flex items-center justify-between px-4 py-2 bg-[#141414] border-b border-white/5 shrink-0">
         <div className="flex items-center gap-4">
           <button 
@@ -382,6 +521,12 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
           <span className="font-black italic text-xl sm:text-2xl tracking-tighter text-rose-500 uppercase">Aviator</span>
         </div>
         <div className="flex items-center gap-2 sm:gap-4">
+          <button 
+            onClick={() => setIsMuted(!isMuted)}
+            className="p-2 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-full text-white transition-all border border-white/10"
+          >
+            {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+          </button>
           <div className="bg-[#000] px-3 sm:px-4 py-1 rounded-full border border-emerald-500/30 flex items-center gap-2">
             <span className="text-emerald-400 font-bold text-sm sm:text-base tracking-tight">{balance.toLocaleString("en-US", { minimumFractionDigits: 2 })} USD</span>
           </div>
@@ -435,7 +580,7 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
                   <div className="text-5xl sm:text-7xl font-black italic text-rose-500 drop-shadow-[0_0_30px_rgba(225,29,72,0.5)]">{multiplier.toFixed(2)}x</div>
                 </div>
               ) : (
-                <div className="text-center">
+                <div className="text-center" style={{ transform: `scale(${pulse})`, transition: 'transform 0.1s ease-out' }}>
                   <div className="text-6xl sm:text-8xl font-black italic text-white drop-shadow-[0_0_50px_rgba(255,255,255,0.2)]">{multiplier.toFixed(2)}x</div>
                 </div>
               )}
@@ -468,7 +613,7 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
 }
 
 function BetPanel({ bet, setBet, onPlace, onCashOut, gameState, countdown, multiplier, quickAmounts }: any) {
-  const canPlace = gameState === "WAITING" && countdown <= 3;
+  const canPlace = gameState === "WAITING" && countdown > 2;
   const isWaiting = gameState === "WAITING" && !bet.isPlaced && !canPlace;
   const canCashOut = gameState === "IN_FLIGHT" && bet.isPlaced && !bet.isCashedOut;
 

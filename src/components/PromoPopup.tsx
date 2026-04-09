@@ -10,22 +10,22 @@ const promoSlides = [
   {
     id: 1,
     image: "https://images.pexels.com/photos/11483295/pexels-photo-11483295.jpeg?auto=compress&cs=tinysrgb&w=800",
-    title: "৳২৩০০ স্বাগতম বোনাস!",
-    description: "আজই যোগ দিন এবং আপনার ওয়ালেটে সরাসরি ২৩০০ টাকা বোনাস পান।",
+    title: "৳৮৮৮ স্বাগতম বোনাস!",
+    description: "আজই যোগ দিন এবং আপনার ওয়ালেটে সরাসরি ৮৮৮ টাকা বোনাস পান।",
     badge: "Limited Offer"
   },
   {
     id: 2,
     image: "https://images.pexels.com/photos/11483347/pexels-photo-11483347.jpeg?auto=compress&cs=tinysrgb&w=800",
-    title: "আপনার প্রথম ডিপোজিটে ২৩০০ টাকা!",
-    description: "প্রথমবার ডিপোজিট করলেই পাচ্ছেন বিশাল ২৩০০ টাকা ক্যাশব্যাক বোনাস।",
+    title: "আপনার প্রথম ডিপোজিটে ৮৮৮ টাকা!",
+    description: "প্রথমবার ডিপোজিট করলেই পাচ্ছেন বিশাল ৮৮৮ টাকা ক্যাশব্যাক বোনাস।",
     badge: "Hot Deal"
   },
   {
     id: 3,
     image: "https://images.pexels.com/photos/17221265/pexels-photo-17221265.jpeg?auto=compress&cs=tinysrgb&w=800",
-    title: "২৩০০ টাকা মেগা রিওয়ার্ড!",
-    description: "আমাদের বিশেষ অফারে অংশ নিন এবং জিতে নিন ২৩০০ টাকা পর্যন্ত পুরস্কার।",
+    title: "৮৮৮ টাকা মেগা রিওয়ার্ড!",
+    description: "আমাদের বিশেষ অফারে অংশ নিন এবং জিতে নিন ৮৮৮ টাকা পর্যন্ত পুরস্কার।",
     badge: "VIP Only"
   }
 ];

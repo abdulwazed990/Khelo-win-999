@@ -19,7 +19,7 @@ export default function FreeSpin({ userData }: BonusProps) {
     { label: '৳৫', weight: 30, value: 5, type: 'money', color: '#FFD700', textColor: '#000' },
     { label: '৳১', weight: 40, value: 1, type: 'money', color: '#C0C0C0', textColor: '#000' },
     { label: '৳১০', weight: 10, value: 10, type: 'money', color: '#FF4500', textColor: '#fff' },
-    { label: '৫টি ফ্রি স্পিন', weight: 10, value: 5, type: 'spins', color: '#32CD32', textColor: '#fff' },
+    { label: '৳২', weight: 10, value: 2, type: 'money', color: '#32CD32', textColor: '#fff' },
     { label: 'বোমা (ব্যর্থ)', weight: 10, value: 0, type: 'none', color: '#000000', textColor: '#fff' },
     { label: '৳১', weight: 30, value: 1, type: 'money', color: '#C0C0C0', textColor: '#000' },
   ];
@@ -32,7 +32,7 @@ export default function FreeSpin({ userData }: BonusProps) {
     const lastSpin = userData.lastSpinDate ? new Date(userData.lastSpinDate) : null;
     const canSpin = !lastSpin || isAfter(new Date(), addHours(lastSpin, 24));
     
-    if (!canSpin && (userData.freeSpins || 0) <= 0) {
+    if (!canSpin) {
       alert('Next free spin available in ' + formatDistanceToNow(addHours(lastSpin!, 24)));
       return;
     }
@@ -70,12 +70,6 @@ export default function FreeSpin({ userData }: BonusProps) {
 
         if (selected.type === 'money') {
           updates.balance = increment(selected.value);
-        } else if (selected.type === 'spins') {
-          updates.freeSpins = increment(selected.value);
-        }
-
-        if ((userData.freeSpins || 0) > 0 && !canSpin) {
-          updates.freeSpins = increment(-1);
         }
 
         await updateDoc(userRef, updates);
@@ -89,6 +83,9 @@ export default function FreeSpin({ userData }: BonusProps) {
   };
 
   if (!userData) return null;
+
+  const lastSpin = userData.lastSpinDate ? new Date(userData.lastSpinDate) : null;
+  const canSpin = !lastSpin || isAfter(new Date(), addHours(lastSpin, 24));
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
@@ -188,7 +185,7 @@ export default function FreeSpin({ userData }: BonusProps) {
 
             <button 
               onClick={handleSpin}
-              disabled={spinning}
+              disabled={spinning || !canSpin}
               className="w-full py-5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 disabled:from-gray-300 disabled:to-gray-400 text-white font-black rounded-3xl shadow-xl shadow-amber-200 transition-all active:scale-95 flex items-center justify-center gap-3 text-lg"
             >
               {spinning ? (
@@ -196,7 +193,9 @@ export default function FreeSpin({ userData }: BonusProps) {
               ) : (
                 <>
                   <RotateCw size={24} />
-                  <span>চাকা ঘুরান ({toBengaliNumber(userData.freeSpins || 0)} ফ্রি)</span>
+                  <span>
+                    {!canSpin ? `পরবর্তী স্পিন: ${formatDistanceToNow(addHours(lastSpin!, 24))}` : 'চাকা ঘুরান'}
+                  </span>
                 </>
               )}
             </button>

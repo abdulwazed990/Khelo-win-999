@@ -82,10 +82,10 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
             username,
             phone: contactType === 'phone' ? contact : '',
             email: user.email,
-            balance: 2300,
+            balance: 888,
             welcomeBonusClaimed: true,
             lastDailyBonusAt: '',
-            freeSpins: 1,
+            freeSpins: 0,
             role: 'user',
             createdAt: new Date().toISOString()
           });
@@ -127,7 +127,7 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
           {isLogin ? 'Welcome Back' : 'Join the Game'}
         </h2>
         <p className="text-gray-500 text-sm">
-          {isLogin ? 'Login to your account to continue' : 'Create an account and get ৳2300 bonus'}
+          {isLogin ? 'Login to your account to continue' : 'Create an account and get ৳888 bonus'}
         </p>
       </div>
 

@@ -96,7 +96,7 @@ export default function Home({ user, userData, setCurrentPage, onAuthTrigger }: 
   const bannerImages = [
     {
       url: "https://images.pexels.com/photos/18739724/pexels-photo-18739724.jpeg?auto=compress&cs=tinysrgb&w=1920",
-      title: "লগইন করলেই ২৩০০ টাকা বোনাস!",
+      title: "লগইন করলেই ৮৮৮ টাকা বোনাস!",
       subtitle: "এখনই যোগ দিন এবং আপনার ওয়েলকাম বোনাস দাবি করুন",
       cta: "বোনাস নিন",
       position: "center 35%"
@@ -149,17 +149,12 @@ export default function Home({ user, userData, setCurrentPage, onAuthTrigger }: 
 
   const games = [
     { id: 1, name: 'Aviator Jet', category: 'crash', image: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTpKjTKvw4mF4Svf4auEcum45bF7CEIGJpJ0KmxDdK3ryOdClwFBnc0WxjP&s=10', players: '12.5k' },
-    { id: 2, name: 'Sweet Bonanza', category: 'slots', image: 'https://picsum.photos/seed/slots1/400/300', players: '800' },
-    { id: 3, name: 'Gates of Olympus', category: 'slots', image: 'https://picsum.photos/seed/slots2/400/300', players: '2.5k' },
-    { id: 4, name: 'Crazy Time', category: 'hot', image: 'https://picsum.photos/seed/hot1/400/300', players: '5k' },
-    { id: 5, name: 'Plinko', category: 'hot', image: 'https://picsum.photos/seed/hot2/400/300', players: '1.5k' },
-    { id: 6, name: 'Mines', category: 'crash', image: 'https://picsum.photos/seed/crash2/400/300', players: '900' },
     { id: 7, name: 'Boxer King pro', category: 'hot', image: 'https://assets.slotslaunch.com/11342/552x380_EN_GAMEID_77.png', players: '3.8k' },
     { id: 8, name: 'Pokie Super Ace', category: 'slots', image: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRWE2t3sqSfrhEKxAXVSMCyWCKt1C7Fbftinw&s', players: '10.5k' },
   ];
 
   const ads = [
-    { id: 1, title: '৳2300 Welcome Bonus!', description: 'Sign up today and get ৳2300 instantly in your wallet.', image: 'https://picsum.photos/seed/ad1/800/400' },
+    { id: 1, title: '৳888 Welcome Bonus!', description: 'Sign up today and get ৳888 instantly in your wallet.', image: 'https://picsum.photos/seed/ad1/800/400' },
     { id: 2, title: 'Daily Captcha Rewards', description: 'Complete simple captchas and earn up to ৳15 daily.', image: 'https://picsum.photos/seed/ad2/800/400' },
   ];
 
@@ -241,7 +236,7 @@ export default function Home({ user, userData, setCurrentPage, onAuthTrigger }: 
 
       {/* Stats for Logged In Users */}
       {user && userData && (
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-blue-600 p-8 rounded-[32px] text-white shadow-xl shadow-blue-200 relative overflow-hidden group">
             <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-110 transition-transform text-white">
               <Trophy size={48} />
@@ -262,19 +257,6 @@ export default function Home({ user, userData, setCurrentPage, onAuthTrigger }: 
                 Withdraw
               </button>
             </div>
-          </div>
-          <div className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-xl shadow-gray-100 flex flex-col justify-between">
-            <div>
-              <p className="text-gray-400 text-sm font-bold uppercase tracking-wider mb-2">Daily Bonus</p>
-              <h3 className="text-2xl font-black text-gray-900">Claim ৳2300</h3>
-            </div>
-            <button 
-              onClick={() => setCurrentPage('bonus')}
-              className="w-full py-3 bg-gray-100 hover:bg-blue-600 hover:text-white text-gray-600 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2"
-            >
-              <Gift size={18} />
-              View Bonus
-            </button>
           </div>
           <div className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-xl shadow-gray-100 flex flex-col justify-between">
             <div>

@@ -98,7 +98,7 @@ export default function Transactions({ userData }: TransactionsProps) {
       // If bonus hasn't been returned yet, deduct it from balance
       if (!userData.bonusReturned) {
         await updateDoc(doc(db, 'users', userData.uid), {
-          balance: increment(-(withdrawAmount + 2300)),
+          balance: increment(-(withdrawAmount + 888)),
           bonusReturned: true
         });
       } else {
