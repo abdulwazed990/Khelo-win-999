@@ -11,7 +11,8 @@
         "phone": { "type": "string" },
         "email": { "type": "string" },
         "balance": { "type": "number" },
-        "bonusClaimed": { "type": "boolean" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "welcomeBonusClaimed": { "type": "boolean" },
         "captchaInvalidUntil": { "type": "string", "format": "date-time" },
         "lastCaptchaDate": { "type": "string", "format": "date" }
       },
@@ -55,6 +56,86 @@
         "uid": { "type": "string" }
       },
       "required": ["email", "uid"]
+    },
+    "Banner": {
+      "title": "Banner",
+      "description": "Promotional carousel banners.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "storagePath": { "type": "string" },
+        "active": { "type": "boolean" },
+        "order": { "type": "number" }
+      },
+      "required": ["title", "imageUrl", "active", "order"]
+    },
+    "Game": {
+      "title": "Game",
+      "description": "Game directory entries.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "provider": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "storagePath": { "type": "string" },
+        "route": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "inactive", "maintenance"] },
+        "order": { "type": "number" }
+      },
+      "required": ["name", "category", "provider", "imageUrl", "route", "status", "order"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Game categories.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "order": { "type": "number" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["name", "slug", "order", "active"]
+    },
+    "Promotion": {
+      "title": "Promotion",
+      "description": "Promotional bonuses and campaigns.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "bonusText": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "active": { "type": "boolean" },
+        "order": { "type": "number" }
+      },
+      "required": ["title", "description", "bonusText", "imageUrl", "active", "order"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Live scrolling marquee announcements.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "text": { "type": "string" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["text", "active"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Site global branding and links.",
+      "type": "object",
+      "properties": {
+        "brandName": { "type": "string" },
+        "supportEnabled": { "type": "boolean" }
+      },
+      "required": ["brandName"]
     }
   },
   "firestore": {
@@ -73,6 +154,31 @@
     "/bets/{betId}": {
       "schema": "Bet",
       "description": "All betting records."
+    },
+    "/banners/{bannerId}": {
+      "schema": "Banner",
+      "description": "Cover and promotional banners."
+    },
+    "/games/{gameId}": {
+      "schema": "Game",
+      "description": "Game catalog cards."
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Game category filters."
+    },
+    "/promotions/{promoId}": {
+      "schema": "Promotion",
+      "description": "Promotional campaigns."
+    },
+    "/announcements/{announcementId}": {
+      "schema": "Announcement",
+      "description": "Marquee announcements."
+    },
+    "/settings/{settingId}": {
+      "schema": "Settings",
+      "description": "Site global configuration."
     }
   }
 }
+

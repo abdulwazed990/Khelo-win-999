@@ -13,6 +13,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, updateDoc, increment } from 'firebase/firestore';
 import { UserData } from '../types';
 import { toBengaliNumber, formatBengaliCurrency } from '../utils';
+import { haptics } from '../utils/haptics';
 import './PokieSuperAceStyles.css';
 
 interface SymbolInstance {
@@ -815,6 +816,11 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
         setWinningPositions(winningPositions);
         setTotalWays(ways);
         playSound(SOUNDS.BURST, 0.4);
+        if (totalWin >= currentBet * 5) {
+          haptics.win();
+        } else {
+          haptics.light();
+        }
         
         // 1. Wait for the burst animation to complete (400ms)
         await new Promise(resolve => setTimeout(resolve, turbo ? 250 : 450));
@@ -1033,6 +1039,7 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       return;
     }
 
+    haptics.medium();
     setIsProcessing(true);
     setIsSpinning(true);
     if (!isFS) {
@@ -1484,7 +1491,10 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
               <div className="flex flex-col items-center">
                 <span className="text-[8px] sm:text-[10px] font-bold text-gray-500 uppercase mb-1">Auto</span>
                 <button 
-                  onClick={() => setAutoSpin(!autoSpin)}
+                  onClick={() => {
+                    haptics.selection();
+                    setAutoSpin(!autoSpin);
+                  }}
                   className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full border transition-all flex items-center justify-center ${autoSpin ? 'bg-yellow-500 border-yellow-400 text-black shadow-[0_0_15px_#ffd700]' : 'bg-white/5 border-white/10 text-gray-400'}`}
                 >
                   <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -1493,7 +1503,10 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
               <div className="flex flex-col items-center">
                 <span className="text-[8px] sm:text-[10px] font-bold text-gray-500 uppercase mb-1">Turbo</span>
                 <button 
-                  onClick={() => setTurbo(!turbo)}
+                  onClick={() => {
+                    haptics.selection();
+                    setTurbo(!turbo);
+                  }}
                   className={`w-9 h-9 sm:w-11 sm:h-11 rounded-full border transition-all flex items-center justify-center ${turbo ? 'bg-orange-500 border-orange-400 text-white shadow-[0_0_15px_#f97316]' : 'bg-white/5 border-white/10 text-gray-400'}`}
                 >
                   <TurboIcon className="w-4 h-4 sm:w-5 sm:h-5" />

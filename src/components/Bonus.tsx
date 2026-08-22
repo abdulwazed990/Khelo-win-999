@@ -6,6 +6,7 @@ import { toBengaliNumber } from '../utils';
 import { motion } from 'motion/react';
 import { Star, Sparkles, RotateCw, RefreshCw } from 'lucide-react';
 import { addHours, isAfter, formatDistanceToNow } from 'date-fns';
+import { haptics } from '../utils/haptics';
 
 interface BonusProps {
   userData: UserData | null;
@@ -33,10 +34,12 @@ export default function FreeSpin({ userData }: BonusProps) {
     const canSpin = !lastSpin || isAfter(new Date(), addHours(lastSpin, 24));
     
     if (!canSpin) {
+      haptics.error();
       alert('Next free spin available in ' + formatDistanceToNow(addHours(lastSpin!, 24)));
       return;
     }
 
+    haptics.medium();
     setSpinning(true);
     setSpinResult(null);
 
@@ -70,6 +73,9 @@ export default function FreeSpin({ userData }: BonusProps) {
 
         if (selected.type === 'money') {
           updates.balance = increment(selected.value);
+          haptics.win();
+        } else {
+          haptics.error();
         }
 
         await updateDoc(userRef, updates);

@@ -1,414 +1,758 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { User } from 'firebase/auth';
-import { UserData } from '../types';
-import { toBengaliNumber, formatBengaliCurrency } from '../utils';
+import { UserData, BannerItem, GameItem, CategoryItem, AnnouncementItem, HomeAdItem, PromotionItem } from '../types';
+import { useLanguage } from '../context/LanguageContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Gamepad2, 
-  TrendingUp, 
-  Zap, 
-  Star, 
   Flame, 
+  Gamepad2, 
+  Rocket, 
+  Dice5, 
+  Tv, 
   Trophy, 
-  ChevronRight,
-  Play,
-  Lock,
+  Fish, 
+  Crosshair, 
+  Volume2, 
+  Sparkles, 
+  Search, 
+  Play, 
+  Lock, 
+  ChevronRight, 
+  Star,
+  Zap,
+  TrendingUp,
+  XCircle,
+  Users,
+  Award,
+  ArrowDownLeft,
+  ArrowUpRight,
   Gift,
-  RefreshCw,
-  XCircle
+  Coins,
+  ShieldCheck,
+  CheckCircle2,
+  ExternalLink
 } from 'lucide-react';
-import Auth from './Auth';
-import PromoPopup from './PromoPopup';
-
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { doc, updateDoc, increment, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, updateDoc, increment, addDoc, serverTimestamp } from 'firebase/firestore';
+import { INITIAL_BANNERS, INITIAL_GAMES, INITIAL_CATEGORIES, seedInitialFirestoreData } from '../services/seedData';
+import { haptics } from '../utils/haptics';
 
 interface HomeProps {
   user: User | null;
   userData: UserData | null;
-  setCurrentPage: (page: any) => void;
+  setCurrentPage: (page: string) => void;
   onAuthTrigger: (mode: 'login' | 'signup') => void;
+  searchQuery?: string;
+  onOpenSearch?: () => void;
 }
 
-export default function Home({ user, userData, setCurrentPage, onAuthTrigger }: HomeProps) {
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [isImageLoaded, setIsImageLoaded] = useState(false);
-  const [showPromo, setShowPromo] = useState(false);
-  const [playingGame, setPlayingGame] = useState<any>(null);
-  const [betAmount, setBetAmount] = useState('10');
+const CATEGORY_ICONS: Record<string, React.ReactNode> = {
+  hot: <Flame size={15} className="text-orange-500" />,
+  slots: <Gamepad2 size={15} className="text-blue-600" />,
+  crash: <Rocket size={15} className="text-rose-500" />,
+  table: <Dice5 size={15} className="text-emerald-600" />,
+  live: <Tv size={15} className="text-indigo-600" />,
+  sports: <Trophy size={15} className="text-amber-500" />,
+  fish: <Fish size={15} className="text-cyan-600" />,
+  esports: <Crosshair size={15} className="text-purple-600" />,
+};
 
-  const handlePlayGame = async (game: any) => {
-    console.log('handlePlayGame called', game);
-    if (!user || !userData) {
-      console.log('User or userData missing', { user: !!user, userData: !!userData });
-      return;
-    }
-    if (game.id === 1) {
-      console.log('Setting page to aviator-jet');
-      setCurrentPage('aviator-jet');
-    } else if (game.id === 7) {
-      console.log('Setting page to game');
-      setCurrentPage('game');
-    } else if (game.id === 8) {
-      console.log('Setting page to pokie-super-ace');
-      setCurrentPage('pokie-super-ace');
-    } else {
-      console.log('Setting playingGame', game.name);
-      setPlayingGame(game);
-    }
-  };
+export default function Home({
+  user,
+  userData,
+  setCurrentPage,
+  onAuthTrigger,
+  searchQuery = '',
+  onOpenSearch
+}: HomeProps) {
+  const { lang, t, getLocalizedText } = useLanguage();
 
-  const handleBet = async () => {
-    if (!user || !userData || !playingGame) return;
-    const amount = Number(betAmount);
-    if (amount > userData.balance) {
-      alert('Insufficient balance!');
-      return;
-    }
+  // Data States from Firestore
+  const [banners, setBanners] = useState<BannerItem[]>([]);
+  const [games, setGames] = useState<GameItem[]>([]);
+  const [categories, setCategories] = useState<CategoryItem[]>([]);
+  const [homeAds, setHomeAds] = useState<HomeAdItem[]>([]);
+  const [promotions, setPromotions] = useState<PromotionItem[]>([]);
+  const [announcementObj, setAnnouncementObj] = useState<AnnouncementItem | null>(null);
 
-    try {
-      // Simple win/loss logic (50/50)
-      const isWin = Math.random() > 0.5;
-      const profit = isWin ? amount : -amount;
+  // UI States
+  const [activeCategory, setActiveCategory] = useState<string>('hot');
+  const [activeProvider, setActiveProvider] = useState<string>('all');
+  const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
+  const [playingSimGame, setPlayingSimGame] = useState<GameItem | null>(null);
+  const [simBetAmount, setSimBetAmount] = useState('50');
+  const [simPlaying, setSimPlaying] = useState(false);
+  const [simResult, setSimResult] = useState<{ won: boolean; winAmount: number } | null>(null);
 
-      await updateDoc(doc(db, 'users', user.uid), {
-        balance: increment(profit),
-        turnover: increment(amount)
-      });
-
-      // Add to history
-      await addDoc(collection(db, 'bets'), {
-        uid: user.uid,
-        gameName: playingGame.name,
-        amount: amount,
-        profit: profit,
-        status: isWin ? 'win' : 'loss',
-        createdAt: serverTimestamp()
-      });
-
-      alert(isWin ? `You won ৳${amount}!` : `You lost ৳${amount}.`);
-      setPlayingGame(null);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'users');
-    }
-  };
-
-  const bannerImages = [
-    {
-      url: "https://images.pexels.com/photos/18739724/pexels-photo-18739724.jpeg?auto=compress&cs=tinysrgb&w=1920",
-      title: "লগইন করলেই ৮৮৮ টাকা বোনাস!",
-      subtitle: "এখনই যোগ দিন এবং আপনার ওয়েলকাম বোনাস দাবি করুন",
-      cta: "বোনাস নিন",
-      position: "center 35%"
-    },
-    {
-      url: "https://images.pexels.com/photos/2701275/pexels-photo-2701275.jpeg?auto=compress&cs=tinysrgb&w=1920",
-      title: "লাইভ ক্যাসিনো স্টুডিও",
-      subtitle: "সেরা ডিলারদের সাথে খেলুন এবং জিতুন আনলিমিটেড",
-      cta: "খেলুন এখন",
-      position: "center 40%"
-    },
-    {
-      url: "https://images.pexels.com/photos/14771683/pexels-photo-14771683.jpeg?auto=compress&cs=tinysrgb&w=1920",
-      title: "বিশাল জয়ের মহোৎসব",
-      subtitle: "প্রতিদিন জিতুন আকর্ষণীয় পুরস্কার এবং মেগা জ্যাকপট",
-      cta: "অংশ নিন",
-      position: "center 45%"
-    },
-    {
-      url: "https://images.pexels.com/photos/11483296/pexels-photo-11483296.jpeg?auto=compress&cs=tinysrgb&w=1920",
-      title: "ভিআইপি মেম্বারশিপ",
-      subtitle: "এক্সক্লুসিভ সুবিধা এবং স্পেশাল রিওয়ার্ড উপভোগ করুন",
-      cta: "যোগ দিন",
-      position: "center 35%"
-    }
-  ];
-
+  // 1. Listen to Firestore collections as Source of Truth
   useEffect(() => {
-    const timer = setInterval(() => {
-      setIsImageLoaded(false);
-      setCurrentImageIndex((prev) => (prev + 1) % bannerImages.length);
-    }, 6000);
+    seedInitialFirestoreData();
 
-    // Show promo popup on mount
-    const promoTimer = setTimeout(() => {
-      setShowPromo(true);
-    }, 1000);
+    // Banners Listener
+    const bannersQ = query(collection(db, 'banners'), orderBy('order', 'asc'));
+    const unsubBanners = onSnapshot(bannersQ, (snapshot) => {
+      if (!snapshot.empty) {
+        const list: BannerItem[] = [];
+        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as BannerItem));
+        const active = list.filter(b => b.active !== false && b.isActive !== false);
+        setBanners(active.length > 0 ? active : list);
+      } else {
+        setBanners(INITIAL_BANNERS.map((b, i) => ({ id: `b_${i}`, ...b })));
+      }
+    }, () => {
+      setBanners(INITIAL_BANNERS.map((b, i) => ({ id: `b_${i}`, ...b })));
+    });
+
+    // Categories Listener
+    const catsQ = query(collection(db, 'categories'), orderBy('order', 'asc'));
+    const unsubCats = onSnapshot(catsQ, (snapshot) => {
+      if (!snapshot.empty) {
+        const list: CategoryItem[] = [];
+        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as CategoryItem));
+        const active = list.filter(c => c.active !== false && c.isActive !== false);
+        setCategories(active.length > 0 ? active : list);
+      } else {
+        setCategories(INITIAL_CATEGORIES.map((c, i) => ({ id: `cat_${c.slug || i}`, ...c } as CategoryItem)));
+      }
+    }, () => {
+      setCategories(INITIAL_CATEGORIES.map((c, i) => ({ id: `cat_${c.slug || i}`, ...c } as CategoryItem)));
+    });
+
+    // Games Listener
+    const gamesQ = query(collection(db, 'games'), orderBy('order', 'asc'));
+    const unsubGames = onSnapshot(gamesQ, (snapshot) => {
+      if (!snapshot.empty) {
+        const list: GameItem[] = [];
+        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as GameItem));
+        const active = list.filter(g => g.status !== 'inactive' && g.isActive !== false);
+        setGames(active.length > 0 ? active : list);
+      } else {
+        setGames(INITIAL_GAMES.map((g, i) => ({ id: `g_${i}`, ...g })));
+      }
+    }, () => {
+      setGames(INITIAL_GAMES.map((g, i) => ({ id: `g_${i}`, ...g })));
+    });
+
+    // Home Ads Listener (Dynamic Home Ad Management)
+    const adsQ = query(collection(db, 'home_ads'), orderBy('order', 'asc'));
+    const unsubAds = onSnapshot(adsQ, (snapshot) => {
+      if (!snapshot.empty) {
+        const list: HomeAdItem[] = [];
+        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as HomeAdItem));
+        setHomeAds(list.filter(a => a.active !== false && a.isActive !== false));
+      }
+    }, () => {});
+
+    // Promotions Listener
+    const promoQ = query(collection(db, 'promotions'), orderBy('order', 'asc'));
+    const unsubPromo = onSnapshot(promoQ, (snapshot) => {
+      if (!snapshot.empty) {
+        const list: PromotionItem[] = [];
+        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as PromotionItem));
+        setPromotions(list.filter(p => p.active !== false && p.isActive !== false));
+      }
+    }, () => {});
+
+    // Announcement Listener
+    const announceQ = query(collection(db, 'announcements'));
+    const unsubAnnounce = onSnapshot(announceQ, (snapshot) => {
+      if (!snapshot.empty) {
+        const docData = snapshot.docs[0].data() as AnnouncementItem;
+        setAnnouncementObj(docData);
+      }
+    }, () => {});
 
     return () => {
-      clearInterval(timer);
-      clearTimeout(promoTimer);
+      unsubBanners();
+      unsubCats();
+      unsubGames();
+      unsubAds();
+      unsubPromo();
+      unsubAnnounce();
     };
-  }, [bannerImages.length]);
+  }, []);
 
-  const categories = [
-    { id: 'hot', name: 'Hot Games', icon: <Flame className="text-orange-500" /> },
-    { id: 'slots', name: 'Slot Games', icon: <Zap className="text-yellow-500" /> },
-    { id: 'crash', name: 'Crash Games', icon: <TrendingUp className="text-red-500" /> },
-  ];
+  // 2. Banner auto-rotation
+  useEffect(() => {
+    if (banners.length <= 1) return;
+    const interval = setInterval(() => {
+      setCurrentBannerIndex(prev => (prev + 1) % banners.length);
+    }, 4500);
+    return () => clearInterval(interval);
+  }, [banners.length]);
 
-  const games = [
-    { id: 1, name: 'Aviator Jet', category: 'crash', image: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTpKjTKvw4mF4Svf4auEcum45bF7CEIGJpJ0KmxDdK3ryOdClwFBnc0WxjP&s=10', players: '12.5k' },
-    { id: 7, name: 'Boxer King pro', category: 'hot', image: 'https://assets.slotslaunch.com/11342/552x380_EN_GAMEID_77.png', players: '3.8k' },
-    { id: 8, name: 'Pokie Super Ace', category: 'slots', image: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRWE2t3sqSfrhEKxAXVSMCyWCKt1C7Fbftinw&s', players: '10.5k' },
-  ];
+  // Provider list derived from loaded games
+  const providers = useMemo(() => {
+    const set = new Set<string>();
+    games.forEach(g => {
+      if (g.provider) set.add(g.provider);
+    });
+    return Array.from(set);
+  }, [games]);
 
-  const ads = [
-    { id: 1, title: '৳888 Welcome Bonus!', description: 'Sign up today and get ৳888 instantly in your wallet.', image: 'https://picsum.photos/seed/ad1/800/400' },
-    { id: 2, title: 'Daily Captcha Rewards', description: 'Complete simple captchas and earn up to ৳15 daily.', image: 'https://picsum.photos/seed/ad2/800/400' },
-  ];
+  // Filtered games based on active category & provider
+  const filteredGames = useMemo(() => {
+    return games.filter(g => {
+      const matchCat = activeCategory === 'hot' 
+        ? (g.hot || g.popular || g.featured || g.category === 'hot') 
+        : g.category === activeCategory;
+      const matchProvider = activeProvider === 'all' || g.provider === activeProvider;
+      return matchCat && matchProvider;
+    });
+  }, [games, activeCategory, activeProvider]);
+
+  // Game click / launcher handler
+  const handleGameClick = (game: GameItem) => {
+    haptics.selection();
+    if (!user) {
+      onAuthTrigger('login');
+      return;
+    }
+
+    const title = (game.title || game.name || game.titleBn || '').toLowerCase();
+    const gameId = (game.id || '').toLowerCase();
+
+    if (title.includes('aviator') || title.includes('jet') || gameId.includes('aviator')) {
+      setCurrentPage('aviator-jet');
+    } else if (title.includes('super ace') || title.includes('ace') || gameId.includes('super-ace')) {
+      setCurrentPage('pokie-super-ace');
+    } else if (title.includes('boxer') || gameId.includes('boxer-king')) {
+      setCurrentPage('boxer-king');
+    } else if (title.includes('mines') || gameId.includes('mines')) {
+      setCurrentPage('mines');
+    } else if (title.includes('roulette') || gameId.includes('roulette')) {
+      setCurrentPage('roulette');
+    } else if (title.includes('coin') || gameId.includes('coinflip')) {
+      setCurrentPage('coinflip');
+    } else {
+      // Open instant simulated mobile slot / card runner
+      setPlayingSimGame(game);
+      setSimResult(null);
+    }
+  };
+
+  const handleSimSpin = async () => {
+    if (!user || !userData || !playingSimGame) return;
+    const bet = Number(simBetAmount);
+    if (!bet || bet <= 0) return;
+    if (userData.balance < bet) {
+      haptics.error();
+      alert(lang === 'bn' ? 'অপর্যাপ্ত ব্যালেন্স! অনুগ্রহ করে ডিপোজিট করুন।' : 'Insufficient balance! Please deposit.');
+      return;
+    }
+
+    haptics.medium();
+    setSimPlaying(true);
+    setSimResult(null);
+
+    // Deduct bet
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        balance: increment(-bet),
+        turnover: increment(bet)
+      });
+
+      setTimeout(async () => {
+        const isWin = Math.random() > 0.45;
+        const multiplier = isWin ? (Math.random() > 0.8 ? 3.5 : 1.8) : 0;
+        const winAmount = Math.round(bet * multiplier);
+
+        if (isWin && winAmount > 0) {
+          await updateDoc(userRef, {
+            balance: increment(winAmount)
+          });
+        }
+
+        // Record bet
+        await addDoc(collection(db, 'bets'), {
+          uid: user.uid,
+          gameName: playingSimGame.title || playingSimGame.name || 'Game',
+          amount: bet,
+          profit: winAmount - bet,
+          status: isWin ? 'win' : 'loss',
+          createdAt: new Date().toISOString()
+        });
+
+        haptics.success();
+        setSimResult({ won: isWin, winAmount });
+        setSimPlaying(false);
+      }, 1200);
+    } catch (err) {
+      setSimPlaying(false);
+      handleFirestoreError(err, OperationType.UPDATE, `users/${user.uid}`);
+    }
+  };
+
+  const currentBanner = banners[currentBannerIndex] || banners[0];
+
+  const marqueeText = announcementObj 
+    ? (lang === 'bn' ? (announcementObj.textBn || announcementObj.text) : (announcementObj.textEn || announcementObj.text))
+    : (lang === 'bn' 
+      ? '🎉 TK333 ভিআইপি ক্যাসিনোতে স্বাগতম! বিকাশ ও নগদে অটো ডিপোজিট ও মাত্র ৫ মিনিটে সুপার ফাস্ট উইথড্র সুবিধা।'
+      : '🎉 Welcome to TK333 VIP Casino! 24/7 instant deposit & lightning fast payouts in 5 minutes.');
 
   return (
-    <div className="space-y-12">
-      {/* Hero / Cover Photo Slider */}
-      <section className="relative aspect-[16/10] sm:aspect-[21/9] md:aspect-[21/7] rounded-[32px] overflow-hidden bg-black shadow-2xl">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentImageIndex}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: isImageLoaded ? 1 : 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
-            className="absolute inset-0 w-full h-full"
-          >
-            <img
-              src={bannerImages[currentImageIndex].url}
-              alt={bannerImages[currentImageIndex].title}
-              onLoad={() => setIsImageLoaded(true)}
-              className="w-full h-full object-cover"
-              style={{ objectPosition: bannerImages[currentImageIndex].position }}
-              referrerPolicy="no-referrer"
-            />
-            {isImageLoaded && (
-              <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/30 to-transparent flex flex-col justify-center px-6 sm:px-12 md:px-20 space-y-4 overflow-hidden">
-                <motion.div
-                  initial={{ x: -20, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  className="w-fit shrink-0"
-                >
-                  <div className="bg-yellow-500/20 backdrop-blur-xl border border-yellow-500/40 text-yellow-500 text-[10px] sm:text-xs font-black uppercase tracking-[0.2em] px-4 py-1.5 rounded-full shadow-2xl">
-                    Exclusive Reward
-                  </div>
-                </motion.div>
-                <div className="max-w-xl sm:max-w-2xl space-y-4 shrink-0">
-                  <motion.h2 
-                    initial={{ x: -20, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    className="text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white leading-[1.1] drop-shadow-2xl break-words"
-                  >
-                    {bannerImages[currentImageIndex].title}
-                  </motion.h2>
-                  <motion.p 
-                    initial={{ x: -20, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    className="text-xs sm:text-base md:text-lg text-gray-200 max-w-md font-bold leading-relaxed drop-shadow-lg line-clamp-3 sm:line-clamp-none"
-                  >
-                    {bannerImages[currentImageIndex].subtitle}
-                  </motion.p>
-                </div>
-                <motion.div
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  className="pt-4 shrink-0"
-                >
-                  <button
-                    onClick={() => onAuthTrigger('signup')}
-                    className="group relative overflow-hidden px-8 py-3.5 bg-gradient-to-r from-yellow-400 to-orange-500 text-black font-black rounded-2xl hover:scale-105 transition-all shadow-[0_0_30px_rgba(234,179,8,0.4)] active:scale-95"
-                  >
-                    <span className="relative z-10 flex items-center gap-2">
-                      {bannerImages[currentImageIndex].cta}
-                      <TrendingUp className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                    </span>
-                  </button>
-                </motion.div>
-              </div>
-            )}
-          </motion.div>
-        </AnimatePresence>
-      </section>
-
-      {/* Promo Popup */}
-      <AnimatePresence>
-        {showPromo && (
-          <PromoPopup onClose={() => setShowPromo(false)} />
-        )}
-      </AnimatePresence>
-
-      {/* Stats for Logged In Users */}
-      {user && userData && (
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-blue-600 p-8 rounded-[32px] text-white shadow-xl shadow-blue-200 relative overflow-hidden group">
-            <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-110 transition-transform text-white">
-              <Trophy size={48} />
-            </div>
-            <p className="text-blue-200 text-sm font-bold uppercase tracking-wider mb-2">Total Balance</p>
-            <h3 className="text-4xl font-black mb-6">৳{userData ? formatBengaliCurrency(userData.balance) : toBengaliNumber(0)}</h3>
-            <div className="flex gap-3">
-              <button 
-                onClick={() => setCurrentPage('transactions')}
-                className="flex-1 py-3 bg-white/20 hover:bg-white/30 rounded-xl font-bold text-sm backdrop-blur-md transition-all"
-              >
-                Deposit
-              </button>
-              <button 
-                onClick={() => setCurrentPage('transactions')}
-                className="flex-1 py-3 bg-white text-blue-600 hover:bg-blue-50 rounded-xl font-bold text-sm transition-all"
-              >
-                Withdraw
-              </button>
-            </div>
-          </div>
-          <div className="bg-white p-8 rounded-[32px] border border-gray-100 shadow-xl shadow-gray-100 flex flex-col justify-between">
-            <div>
-              <p className="text-gray-400 text-sm font-bold uppercase tracking-wider mb-2">Captcha Reward</p>
-              <h3 className="text-2xl font-black text-gray-900">Earn ৳15/Day</h3>
-            </div>
-            <button 
-              onClick={() => setCurrentPage('captcha')}
-              className="w-full py-3 bg-gray-100 hover:bg-blue-600 hover:text-white text-gray-600 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2"
+    <div className="space-y-3.5 max-w-full overflow-hidden">
+      {/* 1. Hero Carousel Banner with Light Frame */}
+      {banners.length > 0 && (
+        <div className="relative w-full aspect-[21/9] sm:aspect-[24/9] rounded-2xl sm:rounded-3xl overflow-hidden bg-slate-200 border border-slate-200 shadow-sm">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentBanner?.id || currentBannerIndex}
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.4 }}
+              className="relative w-full h-full cursor-pointer"
+              onClick={() => {
+                haptics.selection();
+                if (currentBanner?.ctaLink) {
+                  setCurrentPage(currentBanner.ctaLink);
+                } else {
+                  setCurrentPage('promotion');
+                }
+              }}
             >
-              <Gamepad2 size={18} />
-              Play Captcha
-            </button>
-          </div>
-        </section>
+              <img
+                src={currentBanner?.imageUrl}
+                alt={currentBanner?.title || 'TK333 Banner'}
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+
+              {/* Light Subtle Gradient Overlay */}
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-slate-950/20 to-transparent flex flex-col justify-end p-3 sm:p-5">
+                <div className="max-w-md">
+                  {currentBanner?.badge && (
+                    <span className="inline-block px-2 py-0.5 rounded-md bg-amber-500 text-black text-[9px] sm:text-[10px] font-black font-chakra uppercase tracking-wider mb-1 shadow-sm">
+                      {currentBanner.badge}
+                    </span>
+                  )}
+                  <h2 className="text-white text-xs sm:text-base md:text-lg font-chakra font-black leading-tight drop-shadow-md">
+                    {lang === 'bn' && currentBanner?.titleBn ? currentBanner.titleBn : currentBanner?.title}
+                  </h2>
+                  <p className="text-slate-200 text-[9px] sm:text-xs font-medium line-clamp-1 drop-shadow-sm mt-0.5">
+                    {lang === 'bn' && currentBanner?.subtitleBn ? currentBanner.subtitleBn : currentBanner?.subtitle}
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          </AnimatePresence>
+
+          {/* Dots Indicator */}
+          {banners.length > 1 && (
+            <div className="absolute bottom-2 right-3 flex items-center gap-1 z-10">
+              {banners.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    haptics.selection();
+                    setCurrentBannerIndex(idx);
+                  }}
+                  className={`h-1.5 rounded-full transition-all ${
+                    idx === currentBannerIndex 
+                      ? 'w-5 bg-amber-400' 
+                      : 'w-1.5 bg-white/60 hover:bg-white'
+                  }`}
+                  aria-label={`Banner ${idx + 1}`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
-      {/* Categories */}
-      <section>
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-black text-gray-900 flex items-center gap-3">
-            <Gamepad2 className="text-blue-600" />
-            Game Categories
-          </h2>
+      {/* 2. Announcement Marquee Bar (Light Theme) */}
+      <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm text-slate-800">
+        <div className="p-1 rounded-lg bg-blue-50 text-blue-600 shrink-0">
+          <Volume2 size={15} />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {categories.map((cat) => (
-            <button 
-              key={cat.id}
-              className="flex items-center gap-4 p-6 bg-white border border-gray-100 rounded-3xl shadow-lg shadow-gray-50 hover:shadow-blue-100 hover:border-blue-100 transition-all group"
-            >
-              <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center group-hover:bg-blue-50 transition-colors">
-                {cat.icon}
-              </div>
-              <span className="font-bold text-lg text-gray-900">{cat.name}</span>
-              <ChevronRight className="ml-auto text-gray-300 group-hover:text-blue-600 transition-colors" />
-            </button>
-          ))}
+        <div className="flex-1 overflow-hidden">
+          <div className="inline-block whitespace-nowrap text-xs font-medium text-slate-700 animate-marquee">
+            {marqueeText}
+          </div>
         </div>
-      </section>
+      </div>
 
-      {/* Game Grid */}
-      <section>
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-black text-gray-900 flex items-center gap-3">
-            <Flame className="text-orange-500" />
-            Featured Games
-          </h2>
-          <button className="text-blue-600 font-bold text-sm hover:underline">View All</button>
-        </div>
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-4">
-          {games.map((game) => (
-            <div key={game.id} className="group cursor-pointer" onClick={() => user ? handlePlayGame(game) : onAuthTrigger('login')}>
-              <div className="relative aspect-[3/4] rounded-3xl overflow-hidden mb-3 shadow-lg group-hover:shadow-blue-200 transition-all">
-                <img 
-                  src={game.image} 
-                  alt={game.name} 
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  {user ? (
-                    <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-lg">
-                      <Play size={24} fill="currentColor" />
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center gap-2 text-white">
-                      <Lock size={24} />
-                      <span className="text-[10px] font-bold uppercase">Login to Play</span>
-                    </div>
+      {/* 3. Quick Action Feature Badges */}
+      <div className="grid grid-cols-4 gap-2">
+        <button
+          onClick={() => {
+            haptics.selection();
+            setCurrentPage('transactions');
+          }}
+          className="flex flex-col items-center justify-center p-2.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 shadow-sm active:scale-95 transition-all group"
+        >
+          <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-1 group-hover:scale-105 transition-transform shadow-xs">
+            <ArrowDownLeft size={18} />
+          </div>
+          <span className="text-[11px] font-chakra font-black text-slate-800 tracking-tight">
+            {t('nav.deposit', 'ডিপোজিট')}
+          </span>
+          <span className="text-[8px] text-blue-600 font-bold uppercase">অটো</span>
+        </button>
+
+        <button
+          onClick={() => {
+            haptics.selection();
+            setCurrentPage('transactions');
+          }}
+          className="flex flex-col items-center justify-center p-2.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 shadow-sm active:scale-95 transition-all group"
+        >
+          <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-1 group-hover:scale-105 transition-transform shadow-xs">
+            <ArrowUpRight size={18} />
+          </div>
+          <span className="text-[11px] font-chakra font-black text-slate-800 tracking-tight">
+            {lang === 'bn' ? 'উইথড্র' : 'Withdraw'}
+          </span>
+          <span className="text-[8px] text-emerald-600 font-bold uppercase">৫ মিনিট</span>
+        </button>
+
+        <button
+          onClick={() => {
+            haptics.selection();
+            setCurrentPage('prize');
+          }}
+          className="flex flex-col items-center justify-center p-2.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 shadow-sm active:scale-95 transition-all group"
+        >
+          <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center mb-1 group-hover:scale-105 transition-transform shadow-xs">
+            <Trophy size={18} />
+          </div>
+          <span className="text-[11px] font-chakra font-black text-slate-800 tracking-tight">
+            {lang === 'bn' ? 'ফ্রি স্পিন' : 'Free Spin'}
+          </span>
+          <span className="text-[8px] text-amber-600 font-bold uppercase">৳৮৮৮ ফ্রি</span>
+        </button>
+
+        <button
+          onClick={() => {
+            haptics.selection();
+            setCurrentPage('promotion');
+          }}
+          className="flex flex-col items-center justify-center p-2.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 shadow-sm active:scale-95 transition-all group"
+        >
+          <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center mb-1 group-hover:scale-105 transition-transform shadow-xs">
+            <Gift size={18} />
+          </div>
+          <span className="text-[11px] font-chakra font-black text-slate-800 tracking-tight">
+            {lang === 'bn' ? 'প্রমোশন' : 'Offers'}
+          </span>
+          <span className="text-[8px] text-rose-600 font-bold uppercase">১০০% বোনাস</span>
+        </button>
+      </div>
+
+      {/* 4. Active Home Advertisement Card from Firestore (Dynamic) */}
+      {homeAds.length > 0 && (
+        <div className="w-full">
+          {homeAds.slice(0, 1).map((ad) => (
+            <div
+              key={ad.id}
+              onClick={() => {
+                haptics.selection();
+                if (ad.linkUrl) setCurrentPage(ad.linkUrl);
+                else setCurrentPage('promotion');
+              }}
+              className="relative w-full rounded-2xl overflow-hidden border border-amber-200 bg-white shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+            >
+              <img
+                src={ad.imageUrl}
+                alt={ad.title || 'Special Promotion'}
+                className="w-full h-24 sm:h-32 object-cover"
+                referrerPolicy="no-referrer"
+              />
+              {(ad.titleBn || ad.title) && (
+                <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/30 to-transparent p-3 flex flex-col justify-center text-white">
+                  {ad.badgeBn && (
+                    <span className="bg-amber-500 text-black text-[8px] font-black px-1.5 py-0.5 rounded w-max uppercase mb-1">
+                      {ad.badgeBn}
+                    </span>
                   )}
+                  <h4 className="text-xs sm:text-sm font-black font-chakra leading-tight">
+                    {lang === 'bn' ? (ad.titleBn || ad.title) : (ad.titleEn || ad.title)}
+                  </h4>
+                  <p className="text-[10px] text-slate-200">
+                    {lang === 'bn' ? ad.subtitleBn : ad.subtitleEn}
+                  </p>
                 </div>
-                <div className="absolute top-3 left-3 bg-black/50 backdrop-blur-md px-2 py-1 rounded-lg text-[10px] font-bold text-white flex items-center gap-1">
-                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
-                  {game.players} Playing
-                </div>
-              </div>
-              <h4 className="font-bold text-sm text-gray-900 group-hover:text-blue-600 transition-colors">{game.name}</h4>
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{game.category}</p>
+              )}
             </div>
           ))}
         </div>
-      </section>
-      {/* Game Play Modal */}
-      <AnimatePresence>
-        {playingGame && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setPlayingGame(null)}></div>
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="relative z-10 w-full max-w-md bg-white rounded-[40px] p-8 shadow-2xl"
-            >
-              <button 
-                onClick={() => setPlayingGame(null)}
-                className="absolute top-6 right-6 p-2 text-gray-400 hover:text-gray-600 transition-colors"
+      )}
+
+      {/* 5. Game Categories Navigation (Clean Light Theme Horizontal Slider) */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs sm:text-sm font-black font-chakra uppercase text-slate-800 tracking-wider flex items-center gap-1.5">
+            <Sparkles size={14} className="text-amber-500" />
+            {lang === 'bn' ? 'গেম ক্যাটাগরি' : 'Game Categories'}
+          </h3>
+          <span className="text-[10px] font-bold text-slate-500">
+            {filteredGames.length} {lang === 'bn' ? 'টি গেম' : 'Games'}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+          {categories.map((cat, idx) => {
+            const isCatActive = activeCategory === (cat.slug || cat.id);
+            const icon = CATEGORY_ICONS[cat.slug || cat.id] || <Gamepad2 size={15} />;
+            const catName = lang === 'bn' && cat.nameBn ? cat.nameBn : cat.name;
+
+            return (
+              <button
+                key={cat.id || cat.slug || `cat_${idx}`}
+                onClick={() => {
+                  haptics.selection();
+                  setActiveCategory(cat.slug || cat.id);
+                  setActiveProvider('all');
+                }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-chakra font-black whitespace-nowrap transition-all select-none border ${
+                  isCatActive
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-sm scale-102'
+                    : 'bg-white text-slate-700 hover:bg-slate-50 border-slate-200'
+                }`}
               >
-                <XCircle size={24} />
+                <span className={isCatActive ? 'text-white' : ''}>{icon}</span>
+                <span>{catName}</span>
               </button>
-              
-              <div className="flex items-center gap-4 mb-8">
-                <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-lg">
-                  <img src={playingGame.image} alt={playingGame.name} className="w-full h-full object-cover" />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-black text-blue-900">{playingGame.name}</h3>
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{playingGame.category}</p>
+            );
+          })}
+        </div>
+
+        {/* Optional Provider Sub-Filters */}
+        {providers.length > 1 && (
+          <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pt-0.5">
+            <button
+              onClick={() => {
+                haptics.selection();
+                setActiveProvider('all');
+              }}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                activeProvider === 'all'
+                  ? 'bg-slate-800 text-white shadow-xs'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {lang === 'bn' ? 'সকল প্রোভাইডার' : 'All Providers'}
+            </button>
+            {providers.map((p, idx) => (
+              <button
+                key={p || `prov_${idx}`}
+                onClick={() => {
+                  haptics.selection();
+                  setActiveProvider(p);
+                }}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all whitespace-nowrap uppercase ${
+                  activeProvider === p
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 6. Main 3-Column Light Game Cards Grid */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        {filteredGames.map((game, idx) => {
+          const gameTitle = lang === 'bn' && game.titleBn ? game.titleBn : (game.title || game.name || 'Game');
+          const isHot = game.hot || game.popular;
+
+          return (
+            <motion.div
+              key={game.id || game.slug || `game_${idx}`}
+              whileTap={{ scale: 0.96 }}
+              onClick={() => handleGameClick(game)}
+              className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group relative"
+            >
+              {/* Game Cover Image */}
+              <div className="relative w-full aspect-[4/3] bg-slate-100 overflow-hidden">
+                <img
+                  src={game.imageUrl || game.thumbnailUrl || 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=400&auto=format&fit=crop&q=80'}
+                  alt={gameTitle}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  loading="lazy"
+                  referrerPolicy="no-referrer"
+                />
+
+                {/* Hot / Feature Badge */}
+                {isHot && (
+                  <div className="absolute top-1 left-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded uppercase shadow-sm">
+                    {lang === 'bn' ? 'হট' : 'HOT'}
+                  </div>
+                )}
+
+                {/* Play Button Overlay on Hover / Active */}
+                <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                  <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg">
+                    <Play size={14} className="fill-white ml-0.5" />
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Bet Amount (৳)</label>
-                  <div className="flex gap-2">
-                    {['10', '50', '100', '500'].map((amt) => (
-                      <button
-                        key={amt}
-                        onClick={() => setBetAmount(amt)}
-                        className={`flex-1 py-3 rounded-xl font-black text-sm transition-all ${
-                          betAmount === amt ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                        }`}
-                      >
-                        {amt}
-                      </button>
-                    ))}
-                  </div>
+              {/* Game Details Footer */}
+              <div className="p-1.5 sm:p-2 bg-white flex flex-col justify-between flex-1">
+                <div>
+                  <h4 className="text-[11px] sm:text-xs font-black font-chakra text-slate-900 leading-tight truncate">
+                    {gameTitle}
+                  </h4>
+                  <p className="text-[9px] text-slate-400 font-bold uppercase truncate">
+                    {game.provider || 'TK333'}
+                  </p>
                 </div>
 
-                <div className="p-6 bg-blue-50 rounded-3xl border border-blue-100">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Your Balance</span>
-                    <span className="text-lg font-black text-blue-900">৳{userData ? formatBengaliCurrency(userData.balance) : toBengaliNumber(0)}</span>
+                <div className="flex items-center justify-between pt-1 border-t border-slate-100 mt-1">
+                  <span className="flex items-center gap-0.5 text-[9px] text-amber-600 font-bold">
+                    <Star size={10} className="fill-amber-500 text-amber-500" />
+                    {game.rating || '9.8'}
+                  </span>
+                  <span className="text-[9px] font-black text-blue-600 uppercase">
+                    {lang === 'bn' ? 'খেলুন' : 'PLAY'}
+                  </span>
+                </div>
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {filteredGames.length === 0 && (
+        <div className="p-8 text-center bg-white rounded-3xl border border-slate-200 text-slate-500 text-xs">
+          {lang === 'bn' ? 'কোনো গেম খুঁজে পাওয়া যায়নি।' : 'No games found in this category.'}
+        </div>
+      )}
+
+      {/* 7. Live Big Winners / Community Ticker (Light Theme) */}
+      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-xs font-black font-chakra text-slate-900">
+            <Award size={15} className="text-amber-500" />
+            <span>{lang === 'bn' ? 'সাম্প্রতিক বড় জয় (লাইভ উইনার)' : 'Recent Big Winners'}</span>
+          </div>
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {[
+            { user: '017***492', game: 'Super Ace', win: '৳৪৫,২০০' },
+            { user: '018***811', game: 'Aviator Jet', win: '৳৮২,৫০০' },
+            { user: '019***304', game: 'Boxer King', win: '৳২৮,৪০০' }
+          ].map((w, idx) => (
+            <div key={idx} className="p-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs">
+              <div className="truncate">
+                <span className="font-mono text-[10px] text-slate-500 block truncate">{w.user}</span>
+                <span className="font-bold text-[11px] text-slate-800 truncate block">{w.game}</span>
+              </div>
+              <span className="font-black text-emerald-600 font-rajdhani text-xs shrink-0">
+                {w.win}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 8. Interactive Slot Simulator Modal for Unrouted Games */}
+      <AnimatePresence>
+        {playingSimGame && (
+          <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-sm shadow-2xl space-y-4 text-slate-900"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <Gamepad2 size={18} />
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Potential Win</span>
-                    <span className="text-lg font-black text-green-600">৳{formatBengaliCurrency(Number(betAmount) * 2)}</span>
+                  <div>
+                    <h3 className="font-chakra font-black text-sm text-slate-900">
+                      {playingSimGame.title || playingSimGame.name}
+                    </h3>
+                    <span className="text-[10px] text-slate-400 uppercase font-mono">{playingGameProvider(playingSimGame)}</span>
                   </div>
                 </div>
-
-                <button 
-                  onClick={handleBet}
-                  className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all flex items-center justify-center gap-3"
+                <button
+                  onClick={() => setPlayingSimGame(null)}
+                  className="p-1 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100"
                 >
-                  <Play size={20} fill="currentColor" />
-                  PLACE BET
+                  <XCircle size={20} />
                 </button>
               </div>
+
+              {/* Reel Screen Simulation */}
+              <div className="w-full aspect-[16/10] bg-slate-900 rounded-2xl border-2 border-amber-400 p-3 flex flex-col justify-between items-center text-white relative overflow-hidden shadow-inner">
+                <div className="text-[10px] font-chakra text-amber-400 tracking-widest uppercase">
+                  {playingSimGame.title} • 98.6% RTP
+                </div>
+
+                <div className="flex items-center justify-center gap-3 my-auto">
+                  <div className={`w-16 h-20 bg-slate-800 rounded-xl flex items-center justify-center text-3xl font-black border border-slate-700 shadow ${simPlaying ? 'animate-bounce' : ''}`}>
+                    {simPlaying ? '🎰' : (simResult?.won ? '7️⃣' : '👑')}
+                  </div>
+                  <div className={`w-16 h-20 bg-slate-800 rounded-xl flex items-center justify-center text-3xl font-black border border-slate-700 shadow ${simPlaying ? 'animate-bounce' : ''}`}>
+                    {simPlaying ? '💎' : (simResult?.won ? '7️⃣' : '💎')}
+                  </div>
+                  <div className={`w-16 h-20 bg-slate-800 rounded-xl flex items-center justify-center text-3xl font-black border border-slate-700 shadow ${simPlaying ? 'animate-bounce' : ''}`}>
+                    {simPlaying ? '⭐' : (simResult?.won ? '7️⃣' : '🍒')}
+                  </div>
+                </div>
+
+                {simResult && (
+                  <div className={`text-xs font-black font-chakra ${simResult.won ? 'text-emerald-400 animate-pulse' : 'text-rose-400'}`}>
+                    {simResult.won ? `🎉 জয়াভিমুখী! ৳${simResult.winAmount} জয়!` : '😢 পরবর্তীতে আবার চেষ্টা করুন!'}
+                  </div>
+                )}
+              </div>
+
+              {/* Bet Controls */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-500 font-bold">{lang === 'bn' ? 'বাজির পরিমাণ:' : 'Bet Amount:'}</span>
+                  <span className="font-rajdhani font-black text-emerald-600 text-sm">৳{simBetAmount}</span>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {['20', '50', '100', '500'].map((amt) => (
+                    <button
+                      key={amt}
+                      onClick={() => setSimBetAmount(amt)}
+                      className={`py-1 rounded-xl text-xs font-rajdhani font-black border ${
+                        simBetAmount === amt
+                          ? 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-slate-100 text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      ৳{amt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                onClick={handleSimSpin}
+                disabled={simPlaying}
+                className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-chakra font-black text-xs rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+              >
+                {simPlaying ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <span>{lang === 'bn' ? 'স্পিন করুন (SPIN)' : 'SPIN NOW'}</span>
+                )}
+              </button>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
     </div>
   );
+}
+
+function playingGameProvider(game: GameItem) {
+  return game.provider || 'TK333 VIP';
 }

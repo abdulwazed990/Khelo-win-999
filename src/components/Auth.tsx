@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, signOut } from 'firebase/auth';
-import { doc, setDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, signOut, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
+import { useLanguage } from '../context/LanguageContext';
 import { motion } from 'motion/react';
-import { UserPlus, LogIn, Phone, Mail, User as UserIcon, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { UserPlus, LogIn, Phone, Mail, User as UserIcon, Lock, Eye, EyeOff, AlertCircle, Sparkles } from 'lucide-react';
+import { haptics } from '../utils/haptics';
 
 interface AuthProps {
   onSuccess: () => void;
@@ -11,6 +13,7 @@ interface AuthProps {
 }
 
 export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
+  const { lang, t } = useLanguage();
   const [isLogin, setIsLogin] = useState(initialMode === 'login');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -20,53 +23,57 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
   // Form states
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
-  const [contact, setContact] = useState(''); // Phone or Email
+  const [contact, setContact] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    haptics.selection();
     setError('');
     setLoading(true);
 
     try {
       if (isLogin) {
-        // Login logic
-        let loginEmail = contact;
-        // If it's not an email, assume it's a username and find the email
-        if (!contact.includes('@')) {
+        let loginEmail = contact.trim();
+        if (!loginEmail.includes('@')) {
           let usernameDoc;
           try {
-            usernameDoc = await getDoc(doc(db, 'usernames', contact));
+            usernameDoc = await getDoc(doc(db, 'usernames', loginEmail.toLowerCase()));
           } catch (err) {
-            handleFirestoreError(err, OperationType.GET, `usernames/${contact}`);
+            handleFirestoreError(err, OperationType.GET, `usernames/${loginEmail}`);
           }
           if (!usernameDoc?.exists()) {
-            throw new Error('Username not found');
+            throw new Error(lang === 'bn' ? 'ব্যবহারকারীর নাম খুঁজে পাওয়া যায়নি' : 'Username not found');
           }
           loginEmail = usernameDoc.data().email;
         }
         await signInWithEmailAndPassword(auth, loginEmail, password);
+        haptics.success();
         onSuccess();
       } else {
-        // Signup logic
-        if (password !== confirmPassword) throw new Error('Passwords do not match');
-        if (password.length < 6) throw new Error('Password must be at least 6 characters');
+        if (password !== confirmPassword) {
+          throw new Error(lang === 'bn' ? 'পাসওয়ার্ড দুটি মেলেনি' : 'Passwords do not match');
+        }
+        if (password.length < 6) {
+          throw new Error(lang === 'bn' ? 'পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে' : 'Password must be at least 6 characters');
+        }
         
-        // Check if username exists using usernames collection (allowed for unauthenticated)
+        const cleanUsername = username.trim().toLowerCase();
         let usernameDoc;
         try {
-          usernameDoc = await getDoc(doc(db, 'usernames', username));
+          usernameDoc = await getDoc(doc(db, 'usernames', cleanUsername));
         } catch (err) {
-          handleFirestoreError(err, OperationType.GET, `usernames/${username}`);
+          handleFirestoreError(err, OperationType.GET, `usernames/${cleanUsername}`);
         }
-        if (usernameDoc?.exists()) throw new Error('Username already taken');
+        if (usernameDoc?.exists()) {
+          throw new Error(lang === 'bn' ? 'এই ইউজারনেমটি ইতিমধ্যে ব্যবহৃত হয়েছে' : 'Username already taken');
+        }
 
-        // If phone is selected, we create a dummy email for Firebase Auth
-        const email = contactType === 'email' ? contact : `${username}@khelowin999.com`;
+        const email = contactType === 'email' ? contact.trim() : `${cleanUsername}@tk333.vip`;
         
         if (contactType === 'email' && !contact.includes('@')) {
-          throw new Error('Please enter a valid email address');
+          throw new Error(lang === 'bn' ? 'অনুগ্রহ করে সঠিক ইমেইল প্রদান করুন' : 'Please enter a valid email address');
         }
 
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -74,13 +81,12 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
 
         await updateProfile(user, { displayName: name });
 
-        // Create user document
         try {
           await setDoc(doc(db, 'users', user.uid), {
             uid: user.uid,
             name,
-            username,
-            phone: contactType === 'phone' ? contact : '',
+            username: cleanUsername,
+            phone: contactType === 'phone' ? contact.trim() : '',
             email: user.email,
             balance: 888,
             welcomeBonusClaimed: true,
@@ -93,92 +99,136 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
           handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
         }
 
-        // Create username mapping
         try {
-          await setDoc(doc(db, 'usernames', username), {
+          await setDoc(doc(db, 'usernames', cleanUsername), {
             email: user.email,
             uid: user.uid
           });
         } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, `usernames/${username}`);
+          handleFirestoreError(err, OperationType.WRITE, `usernames/${cleanUsername}`);
         }
         
-        // Sign out after signup as requested by user
-        await signOut(auth);
-        
-        // Switch to login mode and show success
-        setIsLogin(true);
-        setError('Account created successfully! Please login with your username and password.');
-        setContact(username);
-        setPassword('');
-        setConfirmPassword('');
+        haptics.success();
+        onSuccess();
       }
     } catch (err: any) {
-      setError(err.message);
+      haptics.error();
+      setError(err.message || 'Authentication error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleAuth = async () => {
+    try {
+      haptics.selection();
+      setLoading(true);
+      setError('');
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      // Check if user doc exists
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (!userDoc.exists()) {
+        const generatedUsername = (user.email?.split('@')[0] || `user_${Date.now().toString().slice(-4)}`).toLowerCase();
+        await setDoc(doc(db, 'users', user.uid), {
+          uid: user.uid,
+          name: user.displayName || 'TK333 Member',
+          username: generatedUsername,
+          email: user.email,
+          phone: '',
+          balance: 888,
+          welcomeBonusClaimed: true,
+          freeSpins: 0,
+          role: 'user',
+          createdAt: new Date().toISOString()
+        });
+
+        await setDoc(doc(db, 'usernames', generatedUsername), {
+          email: user.email,
+          uid: user.uid
+        });
+      }
+
+      haptics.success();
+      onSuccess();
+    } catch (err: any) {
+      console.error(err);
+      haptics.error();
+      setError(err.message || 'Google Sign-In failed');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="w-full max-w-md mx-auto bg-white p-8 rounded-3xl shadow-xl shadow-blue-100 border border-gray-100">
-      <div className="text-center mb-8">
-        <h2 className="text-3xl font-black text-blue-900 mb-2">
-          {isLogin ? 'Welcome Back' : 'Join the Game'}
+    <div className="w-full max-w-md mx-auto bg-white p-6 sm:p-8 rounded-3xl shadow-sm border border-slate-200">
+      <div className="text-center mb-6">
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center p-0.5 mx-auto mb-3 shadow-xs">
+          <div className="w-full h-full bg-white rounded-[14px] flex items-center justify-center">
+            <span className="font-chakra font-black text-sm text-blue-700">TK</span>
+          </div>
+        </div>
+
+        <h2 className="text-xl sm:text-2xl font-black text-slate-900 font-chakra">
+          {isLogin ? (lang === 'bn' ? 'অ্যাকাউন্টে লগইন করুন' : 'Welcome Back') : (lang === 'bn' ? 'নতুন অ্যাকাউন্ট তৈরি করুন' : 'Create Free Account')}
         </h2>
-        <p className="text-gray-500 text-sm">
-          {isLogin ? 'Login to your account to continue' : 'Create an account and get ৳888 bonus'}
+        <p className="text-slate-500 text-xs mt-1">
+          {isLogin 
+            ? (lang === 'bn' ? 'আপনার ইউজারনেম ও পাসওয়ার্ড দিন' : 'Login to manage wallet and play instantly') 
+            : (lang === 'bn' ? 'রেজিস্ট্রেশন করলেই পাচ্ছেন তাৎক্ষণিক ৳৮৮৮ ফ্রি বোনাস!' : 'Register and receive ৳888 instant welcome bonus!')}
         </p>
       </div>
 
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 text-sm">
-          <AlertCircle size={18} />
+        <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-2.5 text-rose-600 text-xs font-medium">
+          <AlertCircle size={16} className="shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-3.5">
         {!isLogin && (
           <>
             <div className="relative">
-              <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input
                 type="text"
-                placeholder="Full Name"
+                placeholder={lang === 'bn' ? 'আপনার পুরো নাম' : 'Full Name'}
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                className="w-full pl-10 pr-3.5 py-3 bg-slate-50 border border-slate-300 rounded-2xl text-slate-900 text-xs focus:border-blue-600 focus:bg-white outline-none transition-all"
               />
             </div>
             <div className="relative">
-              <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input
                 type="text"
-                placeholder="Username"
+                placeholder={lang === 'bn' ? 'ইউজারনেম (e.g. sakib77)' : 'Username'}
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                className="w-full pl-10 pr-3.5 py-3 bg-slate-50 border border-slate-300 rounded-2xl text-slate-900 text-xs focus:border-blue-600 focus:bg-white outline-none transition-all"
               />
             </div>
 
-            {/* Contact Type Selection */}
-            <div className="flex bg-gray-100 p-1 rounded-2xl mb-2">
+            {/* Contact Type Switch */}
+            <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
               <button
                 type="button"
                 onClick={() => { setContactType('phone'); setContact(''); }}
-                className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${contactType === 'phone' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}
+                className={`flex-1 py-2 text-[11px] font-bold rounded-xl transition-all ${contactType === 'phone' ? 'bg-white text-blue-700 font-black shadow-xs' : 'text-slate-500'}`}
               >
-                Phone Number
+                {lang === 'bn' ? 'মোবাইল নম্বর' : 'Phone Number'}
               </button>
               <button
                 type="button"
                 onClick={() => { setContactType('email'); setContact(''); }}
-                className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${contactType === 'email' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}
+                className={`flex-1 py-2 text-[11px] font-bold rounded-xl transition-all ${contactType === 'email' ? 'bg-white text-blue-700 font-black shadow-xs' : 'text-slate-500'}`}
               >
-                Email Address
+                {lang === 'bn' ? 'ইমেইল অ্যাড্রেস' : 'Email Address'}
               </button>
             </div>
           </>
@@ -186,53 +236,57 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
 
         <div className="relative">
           {isLogin ? (
-            <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+            <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           ) : (
             contactType === 'phone' ? (
-              <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             ) : (
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             )
           )}
           <input
             type={!isLogin && contactType === 'phone' ? "tel" : "text"}
-            placeholder={isLogin ? "Username or Email" : (contactType === 'phone' ? "Phone Number" : "Email Address")}
+            placeholder={
+              isLogin 
+                ? (lang === 'bn' ? 'ইউজারনেম অথবা ইমেইল' : 'Username or Email') 
+                : (contactType === 'phone' ? (lang === 'bn' ? 'মোবাইল নম্বর (01XXXXXXXXX)' : 'Phone Number') : 'Email Address')
+            }
             required
             value={contact}
             onChange={(e) => setContact(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+            className="w-full pl-10 pr-3.5 py-3 bg-slate-50 border border-slate-300 rounded-2xl text-slate-900 text-xs focus:border-blue-600 focus:bg-white outline-none transition-all"
           />
         </div>
 
         <div className="relative">
-          <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+          <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input
             type={showPassword ? "text" : "password"}
-            placeholder="Password"
+            placeholder={lang === 'bn' ? 'পাসওয়ার্ড' : 'Password'}
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full pl-12 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+            className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-300 rounded-2xl text-slate-900 text-xs focus:border-blue-600 focus:bg-white outline-none transition-all"
           />
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-blue-600"
+            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
           >
-            {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
         </div>
 
         {!isLogin && (
           <div className="relative">
-            <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+            <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input
               type={showPassword ? "text" : "password"}
-              placeholder="Confirm Password"
+              placeholder={lang === 'bn' ? 'কনফার্ম পাসওয়ার্ড' : 'Confirm Password'}
               required
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+              className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-300 rounded-2xl text-slate-900 text-xs focus:border-blue-600 focus:bg-white outline-none transition-all"
             />
           </div>
         )}
@@ -240,26 +294,42 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+          className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-chakra font-black rounded-2xl shadow-sm hover:from-blue-500 hover:to-blue-600 active:scale-95 transition-all flex items-center justify-center gap-2 text-xs"
         >
           {loading ? (
-            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
           ) : (
             <>
-              {isLogin ? <LogIn size={20} /> : <UserPlus size={20} />}
-              <span>{isLogin ? 'Login Now' : 'Create Account'}</span>
+              {isLogin ? <LogIn size={16} /> : <UserPlus size={16} />}
+              <span>{isLogin ? (lang === 'bn' ? 'লগইন করুন' : 'LOGIN') : (lang === 'bn' ? 'রেজিস্টার করুন' : 'REGISTER')}</span>
             </>
           )}
         </button>
+
+        {/* Google Sign-In */}
+        <button
+          type="button"
+          onClick={handleGoogleAuth}
+          disabled={loading}
+          className="w-full py-3 bg-white hover:bg-slate-50 text-slate-700 font-bold rounded-2xl border border-slate-300 active:scale-95 transition-all flex items-center justify-center gap-2 text-xs shadow-xs"
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24">
+            <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z" />
+            <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z" />
+            <path fill="#FBBC05" d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 12 0 14.8s.7 5.1 1.9 7.5l3.7-2.9z" />
+            <path fill="#34A853" d="M12 23.5c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2L1.9 16.5C3.7 20.2 7.5 23.5 12 23.5z" />
+          </svg>
+          <span>{lang === 'bn' ? 'Google দিয়ে প্রবেশ করুন' : 'Sign in with Google'}</span>
+        </button>
       </form>
 
-      <div className="mt-8 text-center text-sm text-gray-500">
-        {isLogin ? "Don't have an account?" : "Already have an account?"}{' '}
+      <div className="mt-6 text-center text-xs text-slate-500">
+        {isLogin ? (lang === 'bn' ? 'কোনো অ্যাকাউন্ট নেই?' : "Don't have an account?") : (lang === 'bn' ? 'ইতিমধ্যে অ্যাকাউন্ট আছে?' : "Already have an account?")}{' '}
         <button
-          onClick={() => setIsLogin(!isLogin)}
-          className="text-blue-600 font-bold hover:underline"
+          onClick={() => { setIsLogin(!isLogin); setError(''); }}
+          className="text-blue-600 font-bold hover:underline ml-1"
         >
-          {isLogin ? 'Sign Up' : 'Login'}
+          {isLogin ? (lang === 'bn' ? 'রেজিস্টার' : 'Sign Up') : (lang === 'bn' ? 'লগইন' : 'Login')}
         </button>
       </div>
     </div>

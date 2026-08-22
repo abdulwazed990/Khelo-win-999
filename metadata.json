@@ -1,5 +1,6 @@
 {
-  "name": "Khelo Win 999",
-  "description": "A professional casino gaming platform with bonuses, rewards, and secure transactions.",
-  "requestFramePermissions": []
+  "name": "TK333",
+  "description": "TK333 - Professional Mobile Casino Platform with live games, slots, crash games, and permanent admin asset management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

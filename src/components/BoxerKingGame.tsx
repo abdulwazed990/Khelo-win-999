@@ -25,6 +25,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, updateDoc, increment, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { UserData } from '../types';
 import { toBengaliNumber, formatBengaliCurrency } from '../utils';
+import { haptics } from '../utils/haptics';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -339,6 +340,7 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
     if (isSpinning || (balance < bet && freeSpins === 0)) return;
     setShowBetMenu(false);
 
+    haptics.medium();
     setIsSpinning(true);
     setReelSpinning(Array(REEL_COUNT).fill(true));
     setShowBigWin(false);
@@ -517,6 +519,11 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
       setIsHighlighting(true);
       setWinningCells(newWinningCells);
       playSound('win', isSoundEnabled);
+      if (totalWin >= bet * 5 || awardedFreeSpins > 0) {
+        haptics.win();
+      } else {
+        haptics.light();
+      }
 
       setTimeout(async () => {
         setIsHighlighting(false);
@@ -820,7 +827,10 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
 
                 <div className="flex items-center gap-3">
                   <button 
-                    onClick={() => setIsTurbo(!isTurbo)}
+                    onClick={() => {
+                      haptics.selection();
+                      setIsTurbo(!isTurbo);
+                    }}
                     className={cn(
                       "w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all",
                       isTurbo ? "border-yellow-500 text-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.5)]" : "border-zinc-700 text-zinc-500"
@@ -845,7 +855,10 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
                   </motion.button>
                   
                   <button 
-                    onClick={() => setIsAuto(!isAuto)}
+                    onClick={() => {
+                      haptics.selection();
+                      setIsAuto(!isAuto);
+                    }}
                     className={cn(
                       "w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all",
                       isAuto ? "border-green-500 text-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]" : "border-zinc-700 text-zinc-500"
@@ -857,7 +870,10 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
 
                 <div className="relative">
                   <button 
-                    onClick={() => setShowBetMenu(!showBetMenu)}
+                    onClick={() => {
+                      haptics.selection();
+                      setShowBetMenu(!showBetMenu);
+                    }}
                     className="flex flex-col items-center bg-zinc-800 px-3 py-1 rounded-xl border border-zinc-700 hover:bg-zinc-700 transition-colors relative group"
                   >
                     <span className="text-[8px] text-zinc-500 uppercase font-bold">Bet</span>
@@ -885,6 +901,7 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
                             <button
                               key={val}
                               onClick={() => {
+                                haptics.selection();
                                 setBet(val);
                                 setShowBetMenu(false);
                               }}

@@ -1,56 +1,118 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { doc, getDoc, onSnapshot, setDoc, updateDoc, collection, query, where, orderBy } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
-import { UserData, Transaction, Bet } from './types';
-import { toBengaliNumber, formatBengaliCurrency } from './utils';
+import { UserData, SiteSettings, GameItem } from './types';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Home as HomeIcon, 
-  User as UserIcon, 
-  History, 
-  Wallet, 
-  RefreshCw, 
-  LogOut, 
-  LogIn, 
-  UserPlus,
-  Gamepad2,
-  TrendingUp,
-  ShieldCheck,
-  AlertCircle,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  ChevronRight,
-  Menu,
-  X,
-  RotateCw
-} from 'lucide-react';
-import { format } from 'date-fns';
+import { ShieldAlert, ArrowLeft, LogOut } from 'lucide-react';
+import { useLanguage } from './context/LanguageContext';
+import { haptics } from './utils/haptics';
 
 // Components
+import TK333Header from './components/TK333Header';
+import TK333BottomNav from './components/TK333BottomNav';
+import FloatingSupport from './components/FloatingSupport';
 import Auth from './components/Auth';
 import Home from './components/Home';
-import FreeSpin from './components/Bonus';
-import Captcha from './components/Captcha';
-import Profile from './components/Profile';
+import PromotionView from './components/PromotionView';
+import AgentView from './components/AgentView';
+import PrizeCenter from './components/PrizeCenter';
+import MemberProfile from './components/MemberProfile';
 import Transactions from './components/Transactions';
 import HistoryPage from './components/History';
+import AdminPanel from './components/admin/AdminPanel';
+import AdminLogin from './components/admin/AdminLogin';
+import GameSearchOverlay from './components/GameSearchOverlay';
+
+// Fullscreen Interactive Games
 import BoxerKingGame from './components/BoxerKingGame';
 import PokieSuperAceGame from './components/PokieSuperAceGame';
 import AviatorJetGame from './components/AviatorJetGame';
+import MinesGame from './components/MinesGame';
+import RouletteGame from './components/RouletteGame';
+import CoinflipGame from './components/CoinflipGame';
 
-export type Page = 'home' | 'free-spin' | 'captcha' | 'profile' | 'transactions' | 'history' | 'game' | 'pokie-super-ace' | 'aviator-jet';
+export type Page = 
+  | 'home' 
+  | 'promotion' 
+  | 'agent' 
+  | 'prize' 
+  | 'member' 
+  | 'transactions' 
+  | 'history' 
+  | 'free-spin' 
+  | 'captcha' 
+  | 'profile' 
+  | 'admin' 
+  | 'admin-login'
+  | 'game' 
+  | 'boxer-king' 
+  | 'pokie-super-ace' 
+  | 'aviator-jet' 
+  | 'mines' 
+  | 'roulette' 
+  | 'coinflip';
 
 export default function App() {
+  const { lang } = useLanguage();
   const [user, setUser] = useState<User | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
+  const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState<Page>('home');
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [showSearchModal, setShowSearchModal] = useState(false);
 
+  // Read URL on initial mount and setup popstate/hashchange listener
+  useEffect(() => {
+    const handleUrlRoute = () => {
+      const path = window.location.pathname.toLowerCase().replace(/^\/+|\/+$/g, '');
+      const hash = window.location.hash.toLowerCase().replace(/^#\/?/, '');
+      const searchParams = new URLSearchParams(window.location.search);
+      const isQueryAdmin = searchParams.get('page') === 'admin' || searchParams.has('admin');
+
+      if (path === 'admin' || path === 'admin/dashboard' || path === 'admin-dashboard' || hash === 'admin' || isQueryAdmin) {
+        setCurrentPage('admin');
+      } else if (path === 'admin/login' || path === 'admin-login' || hash === 'admin-login') {
+        setCurrentPage('admin-login');
+      } else if (path === 'promotion' || path === 'promotions' || hash === 'promotion') {
+        setCurrentPage('promotion');
+      } else if (path === 'agent' || path === 'affiliate' || hash === 'agent') {
+        setCurrentPage('agent');
+      } else if (path === 'prize' || path === 'rewards' || hash === 'prize') {
+        setCurrentPage('prize');
+      } else if (path === 'member' || path === 'profile' || hash === 'member') {
+        setCurrentPage('member');
+      } else if (path === 'transactions' || path === 'deposit' || path === 'withdraw' || hash === 'transactions') {
+        setCurrentPage('transactions');
+      } else if (path === 'history' || hash === 'history') {
+        setCurrentPage('history');
+      } else if (path === 'aviator' || path === 'aviator-jet' || hash === 'aviator') {
+        setCurrentPage('aviator-jet');
+      } else if (path === 'super-ace' || path === 'pokie-super-ace' || hash === 'super-ace') {
+        setCurrentPage('pokie-super-ace');
+      } else if (path === 'boxer-king' || hash === 'boxer-king') {
+        setCurrentPage('boxer-king');
+      } else if (path === 'mines' || hash === 'mines') {
+        setCurrentPage('mines');
+      } else if (path === 'roulette' || hash === 'roulette') {
+        setCurrentPage('roulette');
+      } else if (path === 'coinflip' || hash === 'coinflip') {
+        setCurrentPage('coinflip');
+      }
+    };
+
+    handleUrlRoute();
+    window.addEventListener('popstate', handleUrlRoute);
+    window.addEventListener('hashchange', handleUrlRoute);
+    return () => {
+      window.removeEventListener('popstate', handleUrlRoute);
+      window.removeEventListener('hashchange', handleUrlRoute);
+    };
+  }, []);
+
+  // 1. Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
@@ -62,11 +124,12 @@ export default function App() {
     return unsubscribe;
   }, []);
 
+  // 2. User Data Listener
   useEffect(() => {
     if (user) {
-      const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (doc) => {
-        if (doc.exists()) {
-          setUserData(doc.data() as UserData);
+      const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
+        if (docSnap.exists()) {
+          setUserData(docSnap.data() as UserData);
         }
         setLoading(false);
       }, (error) => {
@@ -76,6 +139,16 @@ export default function App() {
       return unsubscribe;
     }
   }, [user]);
+
+  // 3. Site Settings Listener
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, 'settings', 'site'), (docSnap) => {
+      if (docSnap.exists()) {
+        setSettings(docSnap.data() as SiteSettings);
+      }
+    });
+    return unsubscribe;
+  }, []);
 
   const handleRefreshBalance = useCallback(async () => {
     if (!user) return;
@@ -90,237 +163,249 @@ export default function App() {
     }
   }, [user]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
+  const handleOpenAuth = (mode: 'login' | 'signup') => {
+    haptics.selection();
+    setAuthMode(mode);
+    setShowAuth(true);
+  };
 
-  const renderPage = () => {
-    if (!user) return <Home user={null} userData={null} setCurrentPage={setCurrentPage} onAuthTrigger={(mode) => { setAuthMode(mode); setShowAuth(true); }} />;
+  const handleNavigate = (page: string) => {
+    haptics.selection();
+    const targetPage = page as Page;
+    setCurrentPage(targetPage);
     
-    console.log('Rendering page:', currentPage);
-    switch (currentPage) {
-      case 'home': return <Home user={user} userData={userData} setCurrentPage={setCurrentPage} onAuthTrigger={(mode) => { setAuthMode(mode); setShowAuth(true); }} />;
-      case 'free-spin': return <FreeSpin userData={userData} />;
-      case 'captcha': return <Captcha userData={userData} />;
-      case 'profile': return <Profile userData={userData} onSignOut={() => signOut(auth)} setCurrentPage={setCurrentPage} />;
-      case 'transactions': return <Transactions userData={userData} />;
-      case 'history': return <HistoryPage userData={userData} />;
-      case 'game': 
-        console.log('Rendering BoxerKingGame');
-        return <BoxerKingGame user={user} userData={userData} onBack={() => setCurrentPage('home')} />;
-      case 'pokie-super-ace':
-        return <PokieSuperAceGame user={user} userData={userData} onBack={() => setCurrentPage('home')} />;
-      case 'aviator-jet':
-        return <AviatorJetGame user={user} userData={userData} onBack={() => setCurrentPage('home')} />;
-      default: return <Home user={user} userData={userData} setCurrentPage={setCurrentPage} onAuthTrigger={(mode) => { setAuthMode(mode); setShowAuth(true); }} />;
+    // Update browser URL smoothly without reloading
+    const path = targetPage === 'home' ? '/' : `/${targetPage}`;
+    window.history.pushState(null, '', path);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleLaunchGame = (game: GameItem) => {
+    haptics.medium();
+    setShowSearchModal(false);
+    
+    // Match interactive game IDs
+    const title = (game.title || game.titleBn || '').toLowerCase();
+    if (title.includes('aviator') || title.includes('jet') || game.id.includes('aviator')) {
+      handleNavigate('aviator-jet');
+    } else if (title.includes('ace') || game.id.includes('super-ace')) {
+      handleNavigate('pokie-super-ace');
+    } else if (title.includes('boxer') || game.id.includes('boxer-king')) {
+      handleNavigate('boxer-king');
+    } else if (title.includes('mine') || game.id.includes('mines')) {
+      handleNavigate('mines');
+    } else if (title.includes('roulette') || game.id.includes('roulette')) {
+      handleNavigate('roulette');
+    } else if (title.includes('coin') || game.id.includes('coinflip')) {
+      handleNavigate('coinflip');
+    } else {
+      // Default to Boxer King or Super Ace
+      handleNavigate('pokie-super-ace');
     }
   };
 
-  const isGamePage = currentPage === 'game' || currentPage === 'pokie-super-ace' || currentPage === 'aviator-jet';
-
-  if (isGamePage) {
+  if (loading) {
     return (
-      <div className="fixed inset-0 z-[100] bg-black overflow-hidden">
-        {renderPage()}
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#070b14] text-white">
+        <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-400 p-0.5 animate-pulse shadow-[0_0_25px_rgba(245,158,11,0.5)]">
+          <div className="w-full h-full bg-[#070b14] rounded-[14px] flex items-center justify-center font-chakra font-black text-xl gold-gradient-text">
+            TK
+          </div>
+        </div>
+        <span className="font-chakra font-bold text-xs text-amber-400 mt-4 tracking-widest uppercase animate-pulse">
+          LOADING TK333 VIP CASINO...
+        </span>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-white text-gray-900 font-sans">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setCurrentPage('home')}>
-            <img 
-              src="https://st4.depositphotos.com/3042225/20760/v/450/depositphotos_207603474-stock-illustration-casino-logotype-template-chip-isolated.jpg" 
-              alt="Logo" 
-              className="w-10 h-10 object-contain mix-blend-multiply"
-              referrerPolicy="no-referrer"
-            />
-            <span className="text-xl font-black tracking-tighter text-blue-900">KHELO WIN <span className="text-blue-600">999</span></span>
-          </div>
+  // Fullscreen Interactive Games
+  const isFullscreenGame = 
+    currentPage === 'game' || 
+    currentPage === 'boxer-king' || 
+    currentPage === 'pokie-super-ace' || 
+    currentPage === 'aviator-jet' ||
+    currentPage === 'mines' ||
+    currentPage === 'roulette' ||
+    currentPage === 'coinflip';
 
-          {user ? (
-            <div className="hidden md:flex items-center gap-6">
-              <div className="flex items-center gap-3 bg-blue-50 px-4 py-2 rounded-full border border-blue-100">
-                <div className="flex flex-col items-end">
-                  <span className="text-[10px] uppercase font-bold text-blue-400 leading-none">Balance</span>
-                  <span className="text-lg font-black text-blue-900">৳{userData ? formatBengaliCurrency(userData.balance) : toBengaliNumber(0)}</span>
-                </div>
-                <button 
-                  onClick={handleRefreshBalance}
-                  className="p-1.5 hover:bg-blue-100 rounded-full transition-colors text-blue-600"
-                >
-                  <RefreshCw size={18} />
-                </button>
-              </div>
-              <nav className="flex items-center gap-1">
-                <NavButton active={currentPage === 'home'} onClick={() => setCurrentPage('home')} icon={<HomeIcon size={20} />} label="Home" />
-                <NavButton active={currentPage === 'free-spin'} onClick={() => setCurrentPage('free-spin')} icon={<RotateCw size={20} />} label="Free Spin" />
-                <NavButton active={currentPage === 'captcha'} onClick={() => setCurrentPage('captcha')} icon={<Gamepad2 size={20} />} label="Captcha" />
-                <NavButton active={currentPage === 'history'} onClick={() => setCurrentPage('history')} icon={<History size={20} />} label="History" />
-                <NavButton active={currentPage === 'profile'} onClick={() => setCurrentPage('profile')} icon={<UserIcon size={20} />} label="Profile" />
-              </nav>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={() => { setAuthMode('login'); setShowAuth(true); }} 
-                className="px-5 py-2 text-sm font-bold text-blue-600 hover:bg-blue-50 rounded-full transition-all"
-              >
-                Login
-              </button>
-              <button 
-                onClick={() => { setAuthMode('signup'); setShowAuth(true); }} 
-                className="px-5 py-2 text-sm font-bold bg-blue-600 text-white rounded-full shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all"
-              >
-                Join Now
-              </button>
-            </div>
-          )}
-
-          {user && (
-            <button className="md:hidden p-2 text-gray-600" onClick={() => setIsMenuOpen(!isMenuOpen)}>
-              {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
-            </button>
-          )}
-        </div>
-      </header>
-
-      {/* Mobile Menu */}
-      <AnimatePresence>
-        {isMenuOpen && (
-          <motion.div 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="md:hidden fixed inset-0 z-40 bg-white pt-20 px-4"
-          >
-            <div className="flex flex-col gap-2">
-              <MobileNavButton active={currentPage === 'home'} onClick={() => { setCurrentPage('home'); setIsMenuOpen(false); }} icon={<HomeIcon />} label="Home" />
-              <MobileNavButton active={currentPage === 'free-spin'} onClick={() => { setCurrentPage('free-spin'); setIsMenuOpen(false); }} icon={<RotateCw />} label="Free Spin" />
-              <MobileNavButton active={currentPage === 'captcha'} onClick={() => { setCurrentPage('captcha'); setIsMenuOpen(false); }} icon={<Gamepad2 />} label="Captcha" />
-              <MobileNavButton active={currentPage === 'history'} onClick={() => { setCurrentPage('history'); setIsMenuOpen(false); }} icon={<History />} label="History" />
-              <MobileNavButton active={currentPage === 'profile'} onClick={() => { setCurrentPage('profile'); setIsMenuOpen(false); }} icon={<UserIcon />} label="Profile" />
-              <div className="mt-4 p-4 bg-blue-50 rounded-2xl flex justify-between items-center">
-                <span className="font-bold text-blue-900">Total Balance</span>
-                <span className="text-xl font-black text-blue-600">৳{userData ? formatBengaliCurrency(userData.balance) : toBengaliNumber(0)}</span>
-              </div>
-            </div>
-          </motion.div>
+  if (isFullscreenGame) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-black overflow-hidden select-none">
+        {currentPage === 'aviator-jet' && (
+          <AviatorJetGame user={user} userData={userData} onBack={() => handleNavigate('home')} />
         )}
-      </AnimatePresence>
+        {currentPage === 'pokie-super-ace' && (
+          <PokieSuperAceGame user={user} userData={userData} onBack={() => handleNavigate('home')} />
+        )}
+        {(currentPage === 'game' || currentPage === 'boxer-king') && (
+          <BoxerKingGame user={user} userData={userData} onBack={() => handleNavigate('home')} />
+        )}
+        {currentPage === 'mines' && (
+          <MinesGame user={user} userData={userData} onBack={() => handleNavigate('home')} />
+        )}
+        {currentPage === 'roulette' && (
+          <RouletteGame user={user} userData={userData} onBack={() => handleNavigate('home')} />
+        )}
+        {currentPage === 'coinflip' && (
+          <CoinflipGame user={user} userData={userData} onBack={() => handleNavigate('home')} />
+        )}
+      </div>
+    );
+  }
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8">
+  // Admin Route Handler
+  const hasAdminSession = typeof window !== 'undefined' && (
+    sessionStorage.getItem('tk333_admin_auth') === 'true' || 
+    localStorage.getItem('tk333_admin_auth') === 'true'
+  );
+  const isAdmin = userData?.role === 'admin' || user?.email === 'mohammadabdulwazed1@gmail.com' || hasAdminSession;
+
+  if (currentPage === 'admin-login') {
+    return (
+      <AdminLogin 
+        onSuccess={() => handleNavigate('admin')} 
+        onBackToSite={() => handleNavigate('home')} 
+      />
+    );
+  }
+
+  if (currentPage === 'admin') {
+    // If not authenticated as admin, prompt Admin Login
+    if (!isAdmin) {
+      return (
+        <AdminLogin 
+          onSuccess={() => handleNavigate('admin')} 
+          onBackToSite={() => handleNavigate('home')} 
+        />
+      );
+    }
+
+    // Authenticated Admin -> Show AdminPanel
+    return (
+      <AdminPanel 
+        user={user} 
+        userData={userData} 
+        onBack={() => handleNavigate('home')} 
+      />
+    );
+  }
+
+  const renderCurrentView = () => {
+    switch (currentPage) {
+      case 'home':
+        return (
+          <Home
+            user={user}
+            userData={userData}
+            setCurrentPage={handleNavigate}
+            onAuthTrigger={handleOpenAuth}
+            searchQuery=""
+            onOpenSearch={() => setShowSearchModal(true)}
+          />
+        );
+      case 'promotion':
+        return <PromotionView userData={userData} onNavigate={handleNavigate} />;
+      case 'agent':
+        return <AgentView userData={userData} onNavigate={handleNavigate} />;
+      case 'prize':
+      case 'free-spin':
+      case 'captcha':
+        return <PrizeCenter userData={userData} />;
+      case 'member':
+      case 'profile':
+        return <MemberProfile user={user} userData={userData} onNavigate={handleNavigate} />;
+      case 'transactions':
+        return (
+          <div className="max-w-md mx-auto pb-10">
+            <Transactions userData={userData} />
+          </div>
+        );
+      case 'history':
+        return (
+          <div className="max-w-md mx-auto pb-10">
+            <HistoryPage userData={userData} />
+          </div>
+        );
+      default:
+        return (
+          <Home
+            user={user}
+            userData={userData}
+            setCurrentPage={handleNavigate}
+            onAuthTrigger={handleOpenAuth}
+            onOpenSearch={() => setShowSearchModal(true)}
+          />
+        );
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-100 text-slate-900 font-sans flex flex-col selection:bg-blue-600 selection:text-white max-w-full overflow-x-hidden">
+      {/* 1. Fixed Top Header */}
+      <TK333Header
+        user={user}
+        userData={userData}
+        settings={settings}
+        onOpenAuth={handleOpenAuth}
+        onNavigate={handleNavigate}
+        onRefreshBalance={handleRefreshBalance}
+        onOpenSearch={() => setShowSearchModal(true)}
+      />
+
+      {/* 2. Main Page Content Container */}
+      <main className="flex-1 w-full max-w-7xl mx-auto px-2 sm:px-4 py-2 sm:py-4 pb-20 sm:pb-24">
         <AnimatePresence mode="wait">
           <motion.div
-            key={currentPage + (user ? 'auth' : 'noauth')}
-            initial={{ opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
-            transition={{ duration: 0.2 }}
+            key={currentPage}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.12 }}
           >
-            {renderPage()}
+            {renderCurrentView()}
           </motion.div>
         </AnimatePresence>
       </main>
 
-      {/* Auth Modal */}
+      {/* 3. Floating Support / Contact Action */}
+      <FloatingSupport settings={settings} />
+
+      {/* 4. Fixed 5-Item Mobile Bottom Navigation */}
+      <TK333BottomNav
+        currentPage={currentPage}
+        onNavigate={handleNavigate}
+      />
+
+      {/* 5. Real-Time Game Search Modal with Bengali / English Support & Instant Play */}
+      <GameSearchOverlay
+        isOpen={showSearchModal}
+        onClose={() => setShowSearchModal(false)}
+        onSelectGame={handleLaunchGame}
+      />
+
+      {/* 6. Auth Modal */}
       <AnimatePresence>
         {showAuth && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAuth(false)}></div>
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
+          <div className="fixed inset-0 z-[85] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setShowAuth(false)}
+            />
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="relative z-10 w-full max-w-md"
+              exit={{ scale: 0.92, opacity: 0 }}
+              className="relative z-10 w-full max-w-sm"
             >
-              <button 
-                onClick={() => setShowAuth(false)}
-                className="absolute -top-12 right-0 p-2 text-white hover:text-blue-400 transition-colors"
-              >
-                <XCircle size={32} />
-              </button>
               <Auth initialMode={authMode} onSuccess={() => setShowAuth(false)} />
             </motion.div>
           </div>
         )}
       </AnimatePresence>
-
-      {/* Footer */}
-      <footer className="bg-gray-50 border-t border-gray-100 py-12 mt-20">
-        <div className="max-w-7xl mx-auto px-4 grid grid-cols-1 md:grid-cols-4 gap-8">
-          <div className="col-span-1 md:col-span-2">
-            <div className="flex items-center gap-2 mb-4">
-              <img 
-                src="https://st4.depositphotos.com/3042225/20760/v/450/depositphotos_207603474-stock-illustration-casino-logotype-template-chip-isolated.jpg" 
-                alt="Logo" 
-                className="w-8 h-8 object-contain mix-blend-multiply"
-                referrerPolicy="no-referrer"
-              />
-              <span className="text-lg font-black tracking-tighter text-blue-900">KHELO WIN 999</span>
-            </div>
-            <p className="text-gray-500 text-sm max-w-md">
-              The most trusted gaming platform in Bangladesh. Play your favorite games, claim bonuses, and win big with Khelo Win 999.
-            </p>
-          </div>
-          <div>
-            <h4 className="font-bold text-gray-900 mb-4">Quick Links</h4>
-            <ul className="space-y-2 text-sm text-gray-500">
-              <li className="hover:text-blue-600 cursor-pointer">Terms & Conditions</li>
-              <li className="hover:text-blue-600 cursor-pointer">Privacy Policy</li>
-              <li className="hover:text-blue-600 cursor-pointer">Responsible Gaming</li>
-              <li className="hover:text-blue-600 cursor-pointer">Contact Us</li>
-            </ul>
-          </div>
-          <div>
-            <h4 className="font-bold text-gray-900 mb-4">Payment Methods</h4>
-            <div className="flex gap-4 grayscale opacity-50">
-              <img src="https://images.seeklogo.com/logo-png/35/1/nagad-logo-png_seeklogo-355240.png" className="h-6" alt="Nagad" />
-              <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQN0UOeKLg08B-5oj_6s8k6URzU6BUlk93wz7YeeQdrqi6znNUZgkKMhjA0&s=10" className="h-6" alt="Bkash" />
-              <img src="https://static.vecteezy.com/system/resources/thumbnails/068/706/013/small_2x/rocket-color-logo-mobile-banking-icon-free-png.png" className="h-6" alt="Rocket" />
-            </div>
-          </div>
-        </div>
-        <div className="max-w-7xl mx-auto px-4 mt-12 pt-8 border-t border-gray-200 text-center text-gray-400 text-xs">
-          © 2026 Khelo Win 999. All rights reserved.
-        </div>
-      </footer>
     </div>
-  );
-}
-
-function NavButton({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
-  return (
-    <button 
-      onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-2 rounded-full transition-all font-bold text-sm ${
-        active ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-100'
-      }`}
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
-  );
-}
-
-function MobileNavButton({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
-  return (
-    <button 
-      onClick={onClick}
-      className={`flex items-center gap-4 p-4 rounded-2xl transition-all font-bold ${
-        active ? 'bg-blue-600 text-white' : 'bg-gray-50 text-gray-600'
-      }`}
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
   );
 }

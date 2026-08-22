@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, History, Minus, Plus, Volume2, VolumeX } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { haptics } from '../utils/haptics';
 
 interface AviatorJetGameProps {
   user: any;
@@ -215,6 +216,7 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
           setHistory(it => [parseFloat(crashMultRef.current.toFixed(2)), ...it].slice(0, 10));
           setShake(true);
           setFlash(true);
+          haptics.heavy();
           setTimeout(() => setShake(false), 500);
           setTimeout(() => setFlash(false), 200);
           setTimeout(resetGame, 3000);
@@ -252,7 +254,11 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
   const placeBet = (b: number) => {
     if (gameState !== "WAITING" || countdown <= 2) return;
     const A = b === 1 ? bet1 : bet2;
-    if (balance < A.amount) return;
+    if (balance < A.amount) {
+      haptics.error();
+      return;
+    }
+    haptics.medium();
     setBalance(q => q - A.amount);
     if (b === 1) setBet1(q => ({ ...q, isPlaced: true }));
     else setBet2(q => ({ ...q, isPlaced: true }));
@@ -267,6 +273,7 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
 
     if (X.current || !et.isPlaced || et.isCashedOut) return;
     X.current = true;
+    haptics.win();
     if (!isMuted) cashOutSoundRef.current?.play().catch(() => {});
     const it = et.amount * q;
     setBalance(Mt => Mt + it);
@@ -622,17 +629,17 @@ function BetPanel({ bet, setBet, onPlace, onCashOut, gameState, countdown, multi
       <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
         <div className={`flex-1 flex flex-col gap-1.5 sm:gap-2 transition-opacity ${bet.isPlaced ? "opacity-50 pointer-events-none" : ""}`}>
           <div className="bg-black/40 rounded-lg sm:rounded-xl p-0.5 sm:p-1 flex items-center justify-between border border-white/5">
-            <button disabled={bet.isPlaced} onClick={() => setBet((s: any) => ({ ...s, amount: Math.max(0.1, s.amount - 1) }))} className="w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center text-gray-400 hover:text-white disabled:opacity-50">
+            <button disabled={bet.isPlaced} onClick={() => { haptics.selection(); setBet((s: any) => ({ ...s, amount: Math.max(0.1, s.amount - 1) })); }} className="w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center text-gray-400 hover:text-white disabled:opacity-50">
               <Minus className="w-3 h-3 sm:w-4 sm:h-4" />
             </button>
             <input type="number" value={bet.amount} disabled={bet.isPlaced} onChange={e => setBet((s: any) => ({ ...s, amount: parseFloat(e.target.value) || 0 }))} className="bg-transparent text-center font-bold text-xs sm:text-sm w-full outline-none disabled:cursor-not-allowed" />
-            <button disabled={bet.isPlaced} onClick={() => setBet((s: any) => ({ ...s, amount: s.amount + 1 }))} className="w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center text-gray-400 hover:text-white disabled:opacity-50">
+            <button disabled={bet.isPlaced} onClick={() => { haptics.selection(); setBet((s: any) => ({ ...s, amount: s.amount + 1 })); }} className="w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center text-gray-400 hover:text-white disabled:opacity-50">
               <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
             </button>
           </div>
           <div className={`grid ${quickAmounts.length > 4 ? "grid-cols-5 sm:grid-cols-3" : "grid-cols-4 sm:grid-cols-2"} gap-1`}>
             {quickAmounts.map((amt: number) => (
-              <button key={amt} disabled={bet.isPlaced} onClick={() => setBet((s: any) => ({ ...s, amount: amt }))} className="bg-black/20 hover:bg-black/40 text-[8px] sm:text-[10px] font-bold py-1 rounded sm:rounded-lg border border-white/5 transition-colors disabled:opacity-50">
+              <button key={amt} disabled={bet.isPlaced} onClick={() => { haptics.selection(); setBet((s: any) => ({ ...s, amount: amt })); }} className="bg-black/20 hover:bg-black/40 text-[8px] sm:text-[10px] font-bold py-1 rounded sm:rounded-lg border border-white/5 transition-colors disabled:opacity-50">
                 {amt}
               </button>
             ))}
@@ -650,7 +657,7 @@ function BetPanel({ bet, setBet, onPlace, onCashOut, gameState, countdown, multi
               <span className="text-[8px] sm:text-xs font-black uppercase italic tracking-tighter opacity-50">Waiting...</span>
             </div>
           ) : bet.isPlaced && gameState === "WAITING" ? (
-            <button onClick={() => setBet((s: any) => ({ ...s, isPlaced: false, isAutoBet: false }))} className="w-full h-full bg-rose-500/20 border border-rose-500/50 rounded-xl sm:rounded-2xl flex flex-col items-center justify-center hover:bg-rose-500/30 transition-all">
+            <button onClick={() => { haptics.selection(); setBet((s: any) => ({ ...s, isPlaced: false, isAutoBet: false })); }} className="w-full h-full bg-rose-500/20 border border-rose-500/50 rounded-xl sm:rounded-2xl flex flex-col items-center justify-center hover:bg-rose-500/30 transition-all">
               <span className="text-[8px] sm:text-xs font-black uppercase italic tracking-tighter text-rose-500">Cancel</span>
             </button>
           ) : (
@@ -668,7 +675,7 @@ function BetPanel({ bet, setBet, onPlace, onCashOut, gameState, countdown, multi
             <span className="text-[10px] font-black text-white uppercase tracking-wider">Auto Bet</span>
             <span className="text-[8px] text-gray-400">Place bet automatically</span>
           </div>
-          <button onClick={() => setBet((s: any) => ({ ...s, isAutoBet: !s.isAutoBet }))} className={`w-10 h-5 rounded-full relative transition-all ${bet.isAutoBet ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]" : "bg-gray-700"}`}>
+          <button onClick={() => { haptics.selection(); setBet((s: any) => ({ ...s, isAutoBet: !s.isAutoBet })); }} className={`w-10 h-5 rounded-full relative transition-all ${bet.isAutoBet ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]" : "bg-gray-700"}`}>
             <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${bet.isAutoBet ? "left-6" : "left-1"}`} />
           </button>
         </div>
@@ -679,27 +686,27 @@ function BetPanel({ bet, setBet, onPlace, onCashOut, gameState, countdown, multi
               <span className="text-[10px] font-black text-white uppercase tracking-wider">Auto Cash Out</span>
               <span className="text-[8px] text-gray-400">Cash out at multiplier</span>
             </div>
-            <button onClick={() => setBet((s: any) => ({ ...s, isAutoCashOut: !s.isAutoCashOut }))} className={`w-10 h-5 rounded-full relative transition-all ${bet.isAutoCashOut ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]" : "bg-gray-700"}`}>
+            <button onClick={() => { haptics.selection(); setBet((s: any) => ({ ...s, isAutoCashOut: !s.isAutoCashOut })); }} className={`w-10 h-5 rounded-full relative transition-all ${bet.isAutoCashOut ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]" : "bg-gray-700"}`}>
               <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${bet.isAutoCashOut ? "left-6" : "left-1"}`} />
             </button>
           </div>
 
           <div className={`flex flex-col gap-2 transition-all ${bet.isAutoCashOut ? "" : "opacity-30 pointer-events-none grayscale"}`}>
             <div className="flex items-center bg-black/60 rounded-xl p-1 border border-white/10">
-              <button onClick={() => setBet((s: any) => ({ ...s, autoCashOut: Math.max(1.01, parseFloat(((s.autoCashOut || 2) - 0.1).toFixed(2))) }))} className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-white active:scale-90 transition-transform">
+              <button onClick={() => { haptics.selection(); setBet((s: any) => ({ ...s, autoCashOut: Math.max(1.01, parseFloat(((s.autoCashOut || 2) - 0.1).toFixed(2))) })); }} className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-white active:scale-90 transition-transform">
                 <Minus className="w-5 h-5" />
               </button>
               <div className="flex-1 flex items-center justify-center gap-1">
                 <input type="number" step="0.01" value={bet.autoCashOut || ""} placeholder="2.00" onChange={e => setBet((s: any) => ({ ...s, autoCashOut: parseFloat(e.target.value) || null }))} className="bg-transparent text-center font-black text-lg w-full outline-none text-emerald-400" />
                 <span className="text-xs font-black text-emerald-500 italic">x</span>
               </div>
-              <button onClick={() => setBet((s: any) => ({ ...s, autoCashOut: parseFloat(((s.autoCashOut || 2) + 0.1).toFixed(2)) }))} className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-white active:scale-90 transition-transform">
+              <button onClick={() => { haptics.selection(); setBet((s: any) => ({ ...s, autoCashOut: parseFloat(((s.autoCashOut || 2) + 0.1).toFixed(2)) })); }} className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-white active:scale-90 transition-transform">
                 <Plus className="w-5 h-5" />
               </button>
             </div>
             <div className="grid grid-cols-4 gap-1">
               {[1.5, 2, 5, 10].map(S => (
-                <button key={S} onClick={() => setBet((s: any) => ({ ...s, autoCashOut: S }))} className={`py-1.5 rounded-lg text-[10px] font-black transition-all border ${bet.autoCashOut === S ? "bg-emerald-500 border-emerald-400 text-white" : "bg-black/40 border-white/5 text-gray-400 hover:bg-black/60"}`}>
+                <button key={S} onClick={() => { haptics.selection(); setBet((s: any) => ({ ...s, autoCashOut: S })); }} className={`py-1.5 rounded-lg text-[10px] font-black transition-all border ${bet.autoCashOut === S ? "bg-emerald-500 border-emerald-400 text-white" : "bg-black/40 border-white/5 text-gray-400 hover:bg-black/60"}`}>
                   {S.toFixed(1)}x
                 </button>
               ))}

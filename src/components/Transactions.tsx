@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
-import { collection, addDoc, doc, updateDoc, increment } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
+import { collection, addDoc, doc, updateDoc, increment, getDoc, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { UserData } from '../types';
+import { UserData, SiteSettings, PaymentMethodConfig } from '../types';
 import { toBengaliNumber, formatBengaliCurrency } from '../utils';
+import { useLanguage } from '../context/LanguageContext';
+import { haptics } from '../utils/haptics';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Wallet, 
@@ -16,59 +18,133 @@ import {
   Coins,
   Clock,
   ShieldCheck,
-  XCircle
+  XCircle,
+  Copy,
+  Check,
+  Info
 } from 'lucide-react';
 
 interface TransactionsProps {
   userData: UserData | null;
+  user?: any;
 }
 
-const LOGOS = {
-  bkash: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQN0UOeKLg08B-5oj_6s8k6URzU6BUlk93wz7YeeQdrqi6znNUZgkKMhjA0&s=10',
+const DEFAULT_LOGOS: Record<string, string> = {
+  bkash: 'https://images.seeklogo.com/logo-png/39/2/bkash-logo-png_seeklogo-395874.png',
   nagad: 'https://images.seeklogo.com/logo-png/35/1/nagad-logo-png_seeklogo-355240.png',
-  rocket: 'https://static.vecteezy.com/system/resources/thumbnails/068/706/013/small_2x/rocket-color-logo-mobile-banking-icon-free-png.png'
+  rocket: 'https://static.vecteezy.com/system/resources/thumbnails/068/706/013/small_2x/rocket-color-logo-mobile-banking-icon-free-png.png',
+  upay: 'https://play-lh.googleusercontent.com/j4q49Uq8eN2kH89VbM_z21Z6i6A1G5Qv3_f2T4y_b4q4'
 };
 
-export default function Transactions({ userData }: TransactionsProps) {
+const PRESET_AMOUNTS = [500, 1000, 2000, 5000, 10000, 15000, 20000, 30000];
+
+export default function Transactions({ userData, user }: TransactionsProps) {
+  const { lang, t } = useLanguage();
   const [tab, setTab] = useState<'deposit' | 'withdraw'>('deposit');
-  const [method, setMethod] = useState<'nagad' | 'bkash' | 'rocket'>('nagad');
+  const [method, setMethod] = useState<string>('nagad');
   const [amount, setAmount] = useState('');
   const [senderNumber, setSenderNumber] = useState('');
   const [transactionId, setTransactionId] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
+  const [copiedNum, setCopiedNum] = useState(false);
+  const [settings, setSettings] = useState<SiteSettings | null>(null);
+  const [customPaymentMethods, setCustomPaymentMethods] = useState<PaymentMethodConfig[]>([]);
+
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        const snap = await getDoc(doc(db, 'settings', 'site'));
+        if (snap.exists()) {
+          setSettings(snap.data() as SiteSettings);
+        }
+      } catch (err) {
+        console.warn('Could not load site settings:', err);
+      }
+    }
+    loadSettings();
+
+    // Listen to custom payment methods configured by admin
+    const q = query(collection(db, 'payment_methods'), orderBy('sortOrder', 'asc'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        const list: PaymentMethodConfig[] = [];
+        snapshot.forEach((d) => list.push({ id: d.id, ...d.data() } as PaymentMethodConfig));
+        const activeList = list.filter(m => m.status === 'active');
+        if (activeList.length > 0) {
+          setCustomPaymentMethods(activeList);
+        }
+      }
+    }, () => {});
+
+    return () => unsub();
+  }, []);
+
+  const activeMethodObj = customPaymentMethods.find(m => m.methodId === method);
+
+  const activeNumber = activeMethodObj?.accountNumber || (
+    method === 'nagad' 
+      ? (settings?.depositNagadNumber || '01340772478')
+      : method === 'bkash'
+      ? (settings?.depositBkashNumber || '01712345678')
+      : method === 'upay'
+      ? (settings?.depositUpayNumber || '01812345678')
+      : (settings?.depositRocketNumber || '01912345678')
+  );
+
+  const copyNumber = () => {
+    haptics.success();
+    navigator.clipboard.writeText(activeNumber);
+    setCopiedNum(true);
+    setTimeout(() => setCopiedNum(false), 2000);
+  };
+
+  const handleSelectPreset = (val: number) => {
+    haptics.selection();
+    setAmount(val.toString());
+  };
 
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userData) return;
-    if (method !== 'nagad') return; // Only Nagad available for deposit
+    
+    const numAmount = Number(amount);
+    if (!numAmount || numAmount < 200) {
+      haptics.error();
+      setError(lang === 'bn' ? 'সর্বনিম্ন ডিপোজিট পরিমাণ ৳২০০।' : 'Minimum deposit amount is ৳200.');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
     try {
       await addDoc(collection(db, 'transactions'), {
         uid: userData.uid,
+        userName: userData.name || userData.username || 'User',
+        userPhone: userData.phone || '',
         type: 'deposit',
-        method: 'nagad',
-        amount: Number(amount),
+        method,
+        amount: numAmount,
         status: 'pending',
-        senderNumber,
-        transactionId,
+        senderNumber: senderNumber.trim(),
+        transactionId: transactionId.trim().toUpperCase(),
         createdAt: new Date().toISOString()
       });
 
-      // If user has 8000 balance and deposits 2500, mark as deposited after 8k
-      if (userData.balance >= 8000 && Number(amount) >= 2500) {
+      if (userData.balance >= 8000 && numAmount >= 2500) {
         await updateDoc(doc(db, 'users', userData.uid), {
           hasDepositedAfter8k: true
         });
       }
 
+      haptics.success();
       setSuccess(true);
     } catch (err) {
+      haptics.error();
       handleFirestoreError(err, OperationType.CREATE, 'transactions');
-      setError('Failed to submit deposit request.');
+      setError(lang === 'bn' ? 'ডিপোজিট রিকোয়েস্ট পাঠাতে ব্যর্থ হয়েছে।' : 'Failed to submit deposit request.');
     } finally {
       setLoading(false);
     }
@@ -78,14 +154,22 @@ export default function Transactions({ userData }: TransactionsProps) {
     e.preventDefault();
     if (!userData) return;
     
-    // Withdrawal rules
     if (userData.balance < 8000) {
-      setError('উইথড্র করার জন্য আপনার ব্যালেন্স কমপক্ষে ৳৮,০০০ হতে হবে।');
+      haptics.error();
+      setError(lang === 'bn' ? 'উইথড্র করার জন্য আপনার ব্যালেন্স কমপক্ষে ৳৮,০০০ হতে হবে।' : 'Minimum ৳8,000 balance required for withdrawal.');
       return;
     }
 
     if (!userData.hasDepositedAfter8k || (userData.turnover || 0) < 200) {
-      setError('আপনাকে ২৫০০ টাকা ডিপোজিট করে ২০০ টাকার টার্নওভার কমপ্লিট করতে হবে।');
+      haptics.error();
+      setError(lang === 'bn' ? 'আপনাকে ২৫০০ টাকা ডিপোজিট করে ২০০ টাকার টার্নওভার সম্পন্ন করতে হবে।' : 'You must deposit ৳2,500 and complete ৳200 turnover.');
+      return;
+    }
+
+    const withdrawAmount = Number(amount);
+    if (!withdrawAmount || withdrawAmount < 500) {
+      haptics.error();
+      setError(lang === 'bn' ? 'সর্বনিম্ন উইথড্র পরিমাণ ৳৫০০।' : 'Minimum withdrawal amount is ৳500.');
       return;
     }
     
@@ -93,9 +177,6 @@ export default function Transactions({ userData }: TransactionsProps) {
     setError('');
 
     try {
-      const withdrawAmount = Number(amount);
-      
-      // If bonus hasn't been returned yet, deduct it from balance
       if (!userData.bonusReturned) {
         await updateDoc(doc(db, 'users', userData.uid), {
           balance: increment(-(withdrawAmount + 888)),
@@ -109,17 +190,21 @@ export default function Transactions({ userData }: TransactionsProps) {
 
       await addDoc(collection(db, 'transactions'), {
         uid: userData.uid,
+        userName: userData.name || userData.username || 'User',
+        userPhone: userData.phone || '',
         type: 'withdraw',
         method,
         amount: withdrawAmount,
         status: 'pending',
-        senderNumber, // This will be the recipient number for withdrawals
+        senderNumber: senderNumber.trim(),
         createdAt: new Date().toISOString()
       });
+      haptics.success();
       setSuccess(true);
     } catch (err) {
+      haptics.error();
       handleFirestoreError(err, OperationType.CREATE, 'transactions');
-      setError('Failed to submit withdrawal request.');
+      setError(lang === 'bn' ? 'উইথড্র রিকোয়েস্ট পাঠাতে ব্যর্থ হয়েছে।' : 'Failed to submit withdrawal request.');
     } finally {
       setLoading(false);
     }
@@ -129,242 +214,281 @@ export default function Transactions({ userData }: TransactionsProps) {
 
   if (success) {
     return (
-      <div className="max-w-md mx-auto bg-white p-10 rounded-[40px] border border-green-100 shadow-2xl shadow-green-50 text-center">
-        <div className="w-20 h-20 bg-green-100 rounded-3xl flex items-center justify-center text-green-600 mx-auto mb-6">
-          <CheckCircle2 size={40} />
+      <div className="max-w-md mx-auto bg-white p-6 sm:p-8 rounded-3xl border border-emerald-200 shadow-xl text-center space-y-4">
+        <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto shadow-md">
+          <CheckCircle2 size={36} />
         </div>
-        <h3 className="text-2xl font-black text-green-900 mb-2">Request Submitted!</h3>
-        <p className="text-gray-500 font-medium mb-8">
+        <h3 className="text-xl font-black text-slate-900 font-chakra">
+          {lang === 'bn' ? 'অনুরোধ সফলভাবে গৃহীত হয়েছে!' : 'Request Submitted Successfully!'}
+        </h3>
+        <p className="text-xs text-slate-600 leading-relaxed max-w-xs mx-auto">
           {tab === 'deposit' 
-            ? 'সর্বোচ্চ ৫ মিনিটের মধ্যে আপনার টাকা আপনার একাউন্টে যোগ হয়ে যাবে।' 
-            : 'সর্বোচ্চ ২ ঘণ্টার মধ্যে আপনার উইথড্র আপনার মোবাইলের মধ্যে পাঠিয়ে দেয়া হবে।'}
+            ? (lang === 'bn' ? 'সর্বোচ্চ ৫ মিনিটের মধ্যে অ্যাডমিন ভেরিফাই করে ব্যালেন্স যোগ করে দেবে।' : 'Your deposit will be verified and credited within 5 minutes.')
+            : (lang === 'bn' ? 'সর্বোচ্চ ৩০ মিনিটের মধ্যে আপনার উইথড্র পেমেন্ট প্রক্রিয়া সম্পন্ন হবে।' : 'Withdrawal will be transferred to your account within 30 minutes.')}
         </p>
         <button 
-          onClick={() => setSuccess(false)}
-          className="w-full py-4 bg-green-600 text-white font-black rounded-2xl shadow-lg shadow-green-200 hover:bg-green-700 transition-all"
+          onClick={() => {
+            setSuccess(false);
+            setAmount('');
+            setSenderNumber('');
+            setTransactionId('');
+          }}
+          className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-chakra font-black rounded-2xl text-xs shadow-md active:scale-95 transition-all"
         >
-          DONE
+          {t('common.done', 'সম্পন্ন')}
         </button>
       </div>
     );
   }
 
+  // Available display methods
+  const methodsToDisplay = customPaymentMethods.length > 0
+    ? customPaymentMethods
+    : [
+        { id: '1', methodId: 'bkash', name: 'bKash', nameBn: 'বিকাশ', iconUrl: DEFAULT_LOGOS.bkash, status: 'active' as const, sortOrder: 1 },
+        { id: '2', methodId: 'nagad', name: 'Nagad', nameBn: 'নগদ', iconUrl: DEFAULT_LOGOS.nagad, status: 'active' as const, sortOrder: 2 },
+        { id: '3', methodId: 'rocket', name: 'Rocket', nameBn: 'রকেট', iconUrl: DEFAULT_LOGOS.rocket, status: 'active' as const, sortOrder: 3 },
+      ];
+
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="flex bg-gray-100 p-1.5 rounded-3xl mb-10">
+    <div className="space-y-4 max-w-md mx-auto">
+      {/* Switch Tab (Deposit / Withdraw) */}
+      <div className="flex bg-slate-200/80 p-1.5 rounded-2xl border border-slate-300 shadow-inner">
         <button 
-          onClick={() => { setTab('deposit'); setMethod('nagad'); setError(''); }}
-          className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl font-black text-sm transition-all ${
-            tab === 'deposit' ? 'bg-white text-blue-600 shadow-md' : 'text-gray-400 hover:text-gray-600'
+          onClick={() => {
+            haptics.selection();
+            setTab('deposit');
+            setError('');
+          }}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-chakra font-black text-xs transition-all ${
+            tab === 'deposit' 
+              ? 'bg-white text-blue-600 shadow-md' 
+              : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <ArrowDownLeft size={18} />
-          DEPOSIT
+          <ArrowDownLeft size={16} />
+          {t('member.deposit_btn', 'ডিপোজিট')}
         </button>
         <button 
-          onClick={() => { setTab('withdraw'); setError(''); }}
-          className={`flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl font-black text-sm transition-all ${
-            tab === 'withdraw' ? 'bg-white text-blue-600 shadow-md' : 'text-gray-400 hover:text-gray-600'
+          onClick={() => {
+            haptics.selection();
+            setTab('withdraw');
+            setError('');
+          }}
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-chakra font-black text-xs transition-all ${
+            tab === 'withdraw' 
+              ? 'bg-white text-blue-600 shadow-md' 
+              : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <ArrowUpRight size={18} />
-          WITHDRAW
+          <ArrowUpRight size={16} />
+          {t('member.withdraw_btn', 'উইথড্র')}
         </button>
       </div>
 
-      <div className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-2xl shadow-blue-100">
-        <h3 className="text-2xl font-black text-blue-900 mb-8 flex items-center gap-3">
-          {tab === 'deposit' ? <ArrowDownLeft className="text-blue-600" /> : <ArrowUpRight className="text-blue-600" />}
-          {tab === 'deposit' ? 'Deposit Funds' : 'Withdraw Funds'}
-        </h3>
+      {/* Main Light Card Container */}
+      <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200 shadow-lg space-y-4">
+        {/* Payment Methods Section with Larger, Recognized Brand Cards */}
+        <div className="space-y-2">
+          <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider block">
+            {lang === 'bn' ? 'পেমেন্ট মেথড নির্বাচন করুন:' : 'Select Payment Method:'}
+          </label>
+          
+          <div className="grid grid-cols-3 gap-2.5">
+            {methodsToDisplay.map((m, idx) => {
+              const isSelected = method === m.methodId;
+              const logoSrc = m.iconUrl || DEFAULT_LOGOS[m.methodId] || DEFAULT_LOGOS.nagad;
+              const displayName = lang === 'bn' && m.nameBn ? m.nameBn : m.name;
 
-        {/* Method Selection */}
-        <div className="grid grid-cols-3 gap-4 mb-10">
-          {(['nagad', 'bkash', 'rocket'] as const).map((m) => {
-            const isAvailable = tab === 'withdraw' || m === 'nagad';
-            return (
-              <button 
-                key={m}
-                disabled={!isAvailable}
-                onClick={() => setMethod(m)}
-                className={`relative p-4 rounded-3xl border-2 transition-all flex flex-col items-center gap-3 group ${
-                  method === m ? 'border-blue-600 bg-blue-50' : 'border-gray-100 bg-white hover:border-blue-100'
-                } ${!isAvailable ? 'opacity-40 grayscale cursor-not-allowed' : ''}`}
-              >
-                <img src={LOGOS[m]} alt={m} className="h-10 object-contain" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 group-hover:text-blue-600">{m}</span>
-                {method === m && (
-                  <div className="absolute -top-2 -right-2 bg-blue-600 text-white rounded-full p-1 shadow-md">
-                    <CheckCircle2 size={14} />
+              return (
+                <button 
+                  key={m.id || m.methodId || `pm_${idx}`}
+                  type="button"
+                  onClick={() => {
+                    haptics.selection();
+                    setMethod(m.methodId);
+                  }}
+                  className={`p-3 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-1.5 relative ${
+                    isSelected 
+                      ? 'border-blue-600 bg-blue-50/70 shadow-md scale-[1.02]' 
+                      : 'border-slate-200 bg-slate-50/60 hover:bg-slate-100 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="h-8 flex items-center justify-center">
+                    <img 
+                      src={logoSrc} 
+                      alt={displayName} 
+                      className="max-h-7 max-w-full object-contain filter drop-shadow-sm" 
+                      referrerPolicy="no-referrer"
+                    />
                   </div>
-                )}
-                {!isAvailable && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-white/60 rounded-3xl">
-                    <span className="text-[8px] font-black text-red-500 bg-red-50 px-2 py-1 rounded-full border border-red-100">UNAVAILABLE</span>
-                  </div>
-                )}
-              </button>
-            );
-          })}
+                  <span className={`text-[11px] font-chakra font-black uppercase tracking-wider ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>
+                    {displayName}
+                  </span>
+                  {isSelected && (
+                    <div className="absolute top-1.5 right-1.5 bg-blue-600 text-white rounded-full p-0.5 shadow-sm">
+                      <CheckCircle2 size={11} />
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        {tab === 'deposit' && method === 'nagad' && (
-          <div className="mb-8 p-6 bg-blue-50 rounded-3xl border border-blue-100">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-blue-600 shadow-sm">
-                <Phone size={20} />
+        {/* Deposit Info Box */}
+        {tab === 'deposit' && (
+          <div className="p-3.5 bg-amber-50/80 rounded-2xl border border-amber-200 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-sm">
+                  <Phone size={18} />
+                </div>
+                <div>
+                  <span className="text-[10px] text-amber-800 font-bold uppercase block">
+                    {method.toUpperCase()} {lang === 'bn' ? 'পার্সোনাল / এজেন্ট নম্বর' : 'Cashier Number'}
+                  </span>
+                  <span className="text-sm font-black text-slate-900 font-mono tracking-wider">
+                    {activeNumber}
+                  </span>
+                </div>
               </div>
-              <div>
-                <p className="text-[10px] font-black uppercase text-blue-400">Nagad Personal Number</p>
-                <p className="text-xl font-black text-blue-900">{toBengaliNumber('01340772478')}</p>
-              </div>
+
+              <button
+                type="button"
+                onClick={copyNumber}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-sm flex items-center gap-1.5 transition-all active:scale-95"
+              >
+                {copiedNum ? <Check size={13} /> : <Copy size={13} />}
+                <span>{copiedNum ? (lang === 'bn' ? 'কপি হয়েছে' : 'Copied') : (lang === 'bn' ? 'কপি' : 'Copy')}</span>
+              </button>
             </div>
-            <p className="text-xs text-blue-600 font-medium leading-relaxed">
-              নির্দিষ্ট নাম্বারে টাকা সেন্ড মানি করে সঠিক ট্রানজেকশন আইডি এবং প্রেরক নাম্বারটা সাবমিট করুন।
+            
+            <p className="text-[11px] text-slate-700 leading-snug font-medium">
+              {lang === 'bn' 
+                ? '📌 উপরের নম্বরে সেন্ড মানি (Send Money) করে নিচের বক্সে আপনার প্রেরক নম্বর ও TrxID দিন।' 
+                : '📌 Send Money to the above number, then fill your sender number & Transaction ID below.'}
             </p>
           </div>
         )}
 
-        {tab === 'withdraw' && (
-          <>
-            {userData.balance < 8000 ? (
-              <div className="mb-8 p-6 bg-red-50 rounded-3xl border border-red-100 flex items-start gap-4 shadow-sm">
-                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center text-red-600 shrink-0">
-                  <AlertCircle size={20} />
-                </div>
-                <div className="space-y-3 w-full">
-                  <div className="space-y-1">
-                    <p className="text-sm text-red-900 font-black leading-relaxed">
-                      <span className="text-red-600">৳{toBengaliNumber(8000)}</span> ব্যালেন্স হওয়ার পর আপনার উইথড্রল অপশন চালু হবে।
-                    </p>
-                    <p className="text-xs text-red-500 font-bold">
-                      বর্তমানে আপনার ব্যালেন্স: <span className="text-red-700">৳{formatBengaliCurrency(userData.balance)}</span>
-                    </p>
-                  </div>
-                  
-                  {/* Progress Bar */}
-                  <div className="space-y-1.5">
-                    <div className="h-2 w-full bg-red-100 rounded-full overflow-hidden">
-                      <motion.div 
-                        initial={{ width: 0 }}
-                        animate={{ width: `${Math.min((userData.balance / 8000) * 100, 100)}%` }}
-                        className="h-full bg-red-500 rounded-full"
-                      />
-                    </div>
-                    <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-red-400">
-                      <span>Progress</span>
-                      <span>{toBengaliNumber(Math.floor(Math.min((userData.balance / 8000) * 100, 100)))}%</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (!userData.hasDepositedAfter8k || (userData.turnover || 0) < 200) ? (
-              <div className="mb-8 p-6 bg-orange-50 rounded-3xl border border-orange-100 flex items-start gap-4">
-                <AlertCircle className="text-orange-600 shrink-0" size={24} />
-                <div className="space-y-2">
-                  <p className="text-sm text-orange-600 font-bold leading-relaxed">
-                    আপনাকে ২৫০০ টাকা ডিপোজিট করে ২০০ টাকার টার্নওভার কমপ্লিট করতে হবে।
-                  </p>
-                  <div className="flex gap-4 text-[10px] font-black uppercase tracking-widest">
-                    <span className={userData.hasDepositedAfter8k ? 'text-green-600' : 'text-orange-400'}>
-                      Deposit: {userData.hasDepositedAfter8k ? 'COMPLETED' : 'PENDING'}
-                    </span>
-                    <span className={(userData.turnover || 0) >= 200 ? 'text-green-600' : 'text-orange-400'}>
-                      Turnover: {toBengaliNumber(userData.turnover || 0)}/{toBengaliNumber(200)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </>
-        )}
+        {/* Preset Amount UI (Demo/Selectable Preset Buttons) */}
+        <div className="space-y-1.5">
+          <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+            <span>{lang === 'bn' ? 'কুইক সিলেক্ট বাটন (টাকা):' : 'Quick Amount Presets:'}</span>
+            <span className="text-[10px] text-slate-400 font-normal">
+              {lang === 'bn' ? '(ক্লিক করে মান বসান)' : '(Click to set amount)'}
+            </span>
+          </label>
+          <div className="grid grid-cols-4 gap-1.5">
+            {PRESET_AMOUNTS.map((val) => {
+              const isValSelected = amount === val.toString();
+              return (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => handleSelectPreset(val)}
+                  className={`py-1.5 px-1 rounded-xl text-xs font-rajdhani font-black transition-all border text-center ${
+                    isValSelected
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200'
+                  }`}
+                >
+                  ৳{val.toLocaleString()}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-        <form onSubmit={tab === 'deposit' ? handleDeposit : handleWithdraw} className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Amount (৳)</label>
+        {/* Form Inputs */}
+        <form onSubmit={tab === 'deposit' ? handleDeposit : handleWithdraw} className="space-y-3 pt-1">
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+              {lang === 'bn' ? 'টাকার পরিমাণ (৳):' : 'Amount (৳):'}
+            </label>
             <div className="relative">
-              <Coins className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input 
                 type="number"
-                placeholder="Enter amount"
+                placeholder={tab === 'deposit' ? (lang === 'bn' ? 'সর্বনিম্ন ৳২০০' : 'Min ৳200') : (lang === 'bn' ? 'সর্বনিম্ন ৳৫০০' : 'Min ৳500')}
                 required
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                className="w-full pl-12 pr-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all font-bold"
+                className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 font-rajdhani text-base font-black focus:bg-white focus:border-blue-600 outline-none transition-all"
               />
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">
-              {tab === 'deposit' ? 'Sender Number' : 'Recipient Number'}
+          <div className="space-y-1">
+            <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+              {tab === 'deposit' ? (lang === 'bn' ? 'আপনার প্রেরক নম্বর:' : 'Your Sender Phone:') : (lang === 'bn' ? 'উইথড্র প্রাপক নম্বর:' : 'Recipient Phone:')}
             </label>
             <div className="relative">
-              <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input 
                 type="text"
                 placeholder="01XXXXXXXXX"
                 required
                 value={senderNumber}
                 onChange={(e) => setSenderNumber(e.target.value)}
-                className="w-full pl-12 pr-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all font-bold"
+                className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 font-mono text-sm focus:bg-white focus:border-blue-600 outline-none transition-all"
               />
             </div>
           </div>
 
           {tab === 'deposit' && (
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Transaction ID</label>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                {lang === 'bn' ? 'ট্রানজেকশন আইডি (TxID):' : 'Transaction ID (TxID):'}
+              </label>
               <div className="relative">
-                <Hash className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                <Hash className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                 <input 
                   type="text"
-                  placeholder="Enter Transaction ID"
+                  placeholder="e.g. 9J8B23KL"
                   required
                   value={transactionId}
                   onChange={(e) => setTransactionId(e.target.value)}
-                  className="w-full pl-12 pr-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all font-bold"
+                  className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 font-mono text-sm focus:bg-white focus:border-blue-600 outline-none uppercase transition-all"
                 />
               </div>
             </div>
           )}
 
           {error && (
-            <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 text-red-600 text-sm font-bold">
-              <AlertCircle size={18} />
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-2 text-rose-700 text-xs font-medium">
+              <AlertCircle size={16} className="shrink-0 text-rose-600" />
               <span>{error}</span>
             </div>
           )}
 
           <button 
             type="submit"
-            disabled={loading || (tab === 'withdraw' && (userData.balance < 8000 || !userData.hasDepositedAfter8k || (userData.turnover || 0) < 200))}
-            className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+            disabled={loading}
+            className="w-full py-3.5 bg-gradient-to-r from-blue-600 via-blue-700 to-blue-600 hover:from-blue-500 hover:to-blue-600 text-white font-chakra font-black text-xs rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {loading ? (
-              <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
             ) : (
-              <>
-                <span>SUBMIT {tab.toUpperCase()}</span>
-                <ChevronRight size={20} />
-              </>
+              <span>
+                {tab === 'deposit' 
+                  ? (lang === 'bn' ? 'ডিপোজিট রিকোয়েস্ট পাঠান' : 'SUBMIT DEPOSIT REQUEST') 
+                  : (lang === 'bn' ? 'উইথড্র রিকোয়েস্ট পাঠান' : 'SUBMIT WITHDRAWAL REQUEST')}
+              </span>
             )}
           </button>
         </form>
 
-        <p className="mt-8 text-center text-[10px] font-bold text-red-500 uppercase tracking-widest">
-          নাম্বার অথবা ট্রানজেকশন আইডি ভুল হলে আপনার লেনদেন ব্যর্থ হবে।
-        </p>
-
-        <div className="mt-8 pt-8 border-t border-gray-100 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-            <ShieldCheck size={14} className="text-blue-600" />
-            Secure SSL Encryption
-          </div>
-          <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-            <Clock size={14} className="text-blue-600" />
-            24/7 Support
-          </div>
+        <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-bold uppercase">
+          <span className="flex items-center gap-1 text-slate-500">
+            <ShieldCheck size={13} className="text-emerald-600" />
+            {lang === 'bn' ? 'নিরাপদ গেটওয়ে' : 'SSL Encrypted'}
+          </span>
+          <span className="flex items-center gap-1 text-slate-500">
+            <Clock size={13} className="text-blue-600" />
+            {lang === 'bn' ? 'দ্রুত নিষ্পত্তি' : 'Fast Processing'}
+          </span>
         </div>
       </div>
     </div>
