@@ -230,3 +230,89 @@ export interface SiteSettings {
   depositRocketNumber?: string;
   depositUpayNumber?: string;
 }
+
+export type SignalConnectionStatus = 
+  | 'CONNECTING' 
+  | 'CONNECTED' 
+  | 'WAITING_FOR_ROUND' 
+  | 'ROUND_RUNNING' 
+  | 'ROUND_FINISHED' 
+  | 'CRASHED'
+  | 'DISCONNECTED' 
+  | 'ERROR';
+
+export type SignalResultStatus = 
+  | 'SERVER_VERIFIED' 
+  | 'SIGNAL_UNAVAILABLE' 
+  | 'PENDING';
+
+export type SubscriptionType = 'free' | 'premium';
+
+export interface SignalUser {
+  id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  status: 'active' | 'inactive' | 'suspended';
+  notes?: string;
+  createdAt: string;
+}
+
+export interface SignalToken {
+  token: string;
+  userId: string;
+  userName: string;
+  status: 'active' | 'revoked' | 'expired';
+  subscriptionType: SubscriptionType;
+  expiresAt: string; // ISO date string
+  connectedGameId: string;
+  connectedSessionId?: string;
+  lastActiveAt?: string;
+  createdAt: string;
+  ipAddress?: string;
+}
+
+export interface SignalGameConnection {
+  id: string;
+  gameId: string;
+  gameName: string;
+  apiUrl: string;
+  wsUrl?: string;
+  authHeader?: string;
+  connectionStatus: SignalConnectionStatus;
+  lastSyncAt: string;
+  serverVerifiedMode: boolean; // if true, game backend pushes authorized pre-round multipliers
+  currentSessionId?: string;
+  pingMs?: number;
+}
+
+export interface SignalRound {
+  id: string;
+  roundId: string;
+  sessionId: string;
+  gameId: string;
+  status: SignalConnectionStatus;
+  currentMultiplier: number;
+  finalMultiplier?: number;
+  serverSignalStatus: SignalResultStatus;
+  predictedMultiplier?: number | null; // ONLY set when authoritative server provides pre-round multiplier
+  serverSignature?: string;
+  startTime?: string;
+  crashTime?: string;
+  createdAt: string;
+  countdown?: number;
+  countdownStart?: number;
+  countdownEndsAt?: number;
+  serverTimestamp?: number;
+}
+
+export interface SignalLog {
+  id: string;
+  token?: string;
+  userId?: string;
+  userName?: string;
+  action: string;
+  timestamp: string;
+  metadata?: Record<string, any>;
+}
+

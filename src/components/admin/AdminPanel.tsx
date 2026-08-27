@@ -68,9 +68,11 @@ import {
   Copy,
   Link as LinkIcon,
   AlertTriangle,
-  Sparkles
+  Sparkles,
+  Radio
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import SignalManagementTab from './SignalManagementTab';
 
 interface AdminPanelProps {
   user: User | null;
@@ -87,6 +89,7 @@ type TabType =
   | 'promotions' 
   | 'announcements' 
   | 'payment_methods' 
+  | 'signal_management'
   | 'settings' 
   | 'transactions'
   | 'users';
@@ -769,6 +772,7 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
     { id: 'promotions' as TabType, labelBn: 'প্রমোশন অফার', labelEn: 'Promotions', icon: Gift },
     { id: 'announcements' as TabType, labelBn: 'স্ক্রোল ঘোষণা', labelEn: 'Announcements', icon: VolumeIcon },
     { id: 'transactions' as TabType, labelBn: 'ক্যাশিয়ার রিকোয়েস্ট', labelEn: 'Transactions', icon: DollarSign, badge: transactions.filter(t => t.status === 'pending').length },
+    { id: 'signal_management' as TabType, labelBn: 'সিগন্যাল ম্যানেজমেন্ট', labelEn: 'Signal Management', icon: Radio },
     { id: 'users' as TabType, labelBn: 'ইউজার মেম্বার', labelEn: 'Users List', icon: Users },
     { id: 'settings' as TabType, labelBn: 'ওয়েবসাইট সেটিংস', labelEn: 'Site Settings', icon: SettingsIcon },
   ];
@@ -820,6 +824,16 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
         {/* Right Header Actions */}
         <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Aviator Signal CMS Button */}
+          <a
+            href="#signal-cms"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-xl shadow-md shadow-rose-600/30 active:scale-95 transition-all"
+            title="Aviator Signal CMS Controller"
+          >
+            <Radio size={14} className="animate-pulse" />
+            <span className="hidden sm:inline">Signal CMS</span>
+          </a>
+
           {/* Copy Secret Admin Link Button */}
           <button
             onClick={handleCopyAdminLink}
@@ -2184,6 +2198,15 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                 </div>
               </div>
             </form>
+          )}
+
+          {/* TAB 11: SIGNAL MANAGEMENT & CUSTOMER ACCESS */}
+          {activeTab === 'signal_management' && (
+            <SignalManagementTab 
+              lang={lang} 
+              showToast={showToast} 
+              registeredUsers={usersList.map(u => ({ uid: u.uid, name: u.name, username: u.username, phone: u.phone }))}
+            />
           )}
         </main>
       </div>

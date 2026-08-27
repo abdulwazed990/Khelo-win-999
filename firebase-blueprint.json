@@ -136,6 +136,86 @@
         "supportEnabled": { "type": "boolean" }
       },
       "required": ["brandName"]
+    },
+    "SignalUser": {
+      "title": "SignalUser",
+      "description": "Customer authorized to use Aviator Signal.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "inactive", "suspended"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "name", "status", "createdAt"]
+    },
+    "SignalToken": {
+      "title": "SignalToken",
+      "description": "Secure access token generated for Signal App clients.",
+      "type": "object",
+      "properties": {
+        "token": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "revoked", "expired"] },
+        "subscriptionType": { "type": "string", "enum": ["free", "premium"] },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "connectedGameId": { "type": "string" },
+        "lastActiveAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["token", "userId", "userName", "status", "subscriptionType", "expiresAt"]
+    },
+    "SignalGameConnection": {
+      "title": "SignalGameConnection",
+      "description": "Integration endpoint configuration for Aviator Game server.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "gameId": { "type": "string" },
+        "gameName": { "type": "string" },
+        "apiUrl": { "type": "string" },
+        "wsUrl": { "type": "string" },
+        "connectionStatus": { "type": "string", "enum": ["CONNECTING", "CONNECTED", "WAITING_FOR_ROUND", "ROUND_RUNNING", "ROUND_FINISHED", "DISCONNECTED", "ERROR"] },
+        "lastSyncAt": { "type": "string", "format": "date-time" },
+        "authHeader": { "type": "string" },
+        "serverVerifiedMode": { "type": "boolean" }
+      },
+      "required": ["id", "gameId", "gameName", "connectionStatus"]
+    },
+    "SignalRound": {
+      "title": "SignalRound",
+      "description": "Live and historical Aviator game rounds and synchronized signals.",
+      "type": "object",
+      "properties": {
+        "roundId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "gameId": { "type": "string" },
+        "status": { "type": "string", "enum": ["WAITING_FOR_ROUND", "ROUND_RUNNING", "ROUND_FINISHED", "CRASHED"] },
+        "currentMultiplier": { "type": "number" },
+        "finalMultiplier": { "type": "number" },
+        "serverSignalStatus": { "type": "string", "enum": ["SERVER_VERIFIED", "SIGNAL_UNAVAILABLE", "PENDING"] },
+        "predictedMultiplier": { "type": "number" },
+        "startTime": { "type": "string", "format": "date-time" },
+        "crashTime": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["roundId", "status", "createdAt"]
+    },
+    "SignalLog": {
+      "title": "SignalLog",
+      "description": "Audit and activity logs for Aviator Signal access.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "token": { "type": "string" },
+        "userId": { "type": "string" },
+        "action": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "metadata": { "type": "string" }
+      },
+      "required": ["id", "action", "timestamp"]
     }
   },
   "firestore": {
@@ -178,6 +258,26 @@
     "/settings/{settingId}": {
       "schema": "Settings",
       "description": "Site global configuration."
+    },
+    "/signal_users/{userId}": {
+      "schema": "SignalUser",
+      "description": "Signal customer records."
+    },
+    "/signal_tokens/{token}": {
+      "schema": "SignalToken",
+      "description": "Access tokens for customer Signal link authentication."
+    },
+    "/signal_connections/{connectionId}": {
+      "schema": "SignalGameConnection",
+      "description": "Aviator game server connection endpoints."
+    },
+    "/signal_rounds/{roundId}": {
+      "schema": "SignalRound",
+      "description": "Real-time and historic synchronized rounds."
+    },
+    "/signal_logs/{logId}": {
+      "schema": "SignalLog",
+      "description": "Activity and connection logs."
     }
   }
 }

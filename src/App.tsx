@@ -32,6 +32,10 @@ import MinesGame from './components/MinesGame';
 import RouletteGame from './components/RouletteGame';
 import CoinflipGame from './components/CoinflipGame';
 
+// Aviator Signal Ecosystem
+import AviatorSignalApp from './components/signal/AviatorSignalApp';
+import AviatorSignalCMS from './components/signal/AviatorSignalCMS';
+
 export type Page = 
   | 'home' 
   | 'promotion' 
@@ -51,7 +55,9 @@ export type Page =
   | 'aviator-jet' 
   | 'mines' 
   | 'roulette' 
-  | 'coinflip';
+  | 'coinflip'
+  | 'aviator-signal'
+  | 'aviator-signal-cms';
 
 export default function App() {
   const { lang } = useLanguage();
@@ -63,6 +69,7 @@ export default function App() {
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [showSearchModal, setShowSearchModal] = useState(false);
+  const [signalToken, setSignalToken] = useState<string>('');
 
   // Read URL on initial mount and setup popstate/hashchange listener
   useEffect(() => {
@@ -74,6 +81,22 @@ export default function App() {
 
       if (path === 'admin' || path === 'admin/dashboard' || path === 'admin-dashboard' || hash === 'admin' || isQueryAdmin) {
         setCurrentPage('admin');
+      } else if (path === 'signal-cms' || hash === 'signal-cms' || path === 'signal-admin' || hash === 'signal-admin') {
+        setCurrentPage('aviator-signal-cms');
+      } else if (path.startsWith('signal') || hash.startsWith('signal') || searchParams.has('signal') || searchParams.has('token')) {
+        let tok = searchParams.get('token') || searchParams.get('signal') || '';
+        if (!tok) {
+          const pathParts = path.split('/');
+          if (pathParts[0] === 'signal' && pathParts[1]) {
+            tok = pathParts[1];
+          }
+          const hashParts = hash.split('/');
+          if (hashParts[0] === 'signal' && hashParts[1]) {
+            tok = hashParts[1];
+          }
+        }
+        if (tok) setSignalToken(tok);
+        setCurrentPage('aviator-signal');
       } else if (path === 'admin/login' || path === 'admin-login' || hash === 'admin-login') {
         setCurrentPage('admin-login');
       } else if (path === 'promotion' || path === 'promotions' || hash === 'promotion') {
@@ -219,6 +242,33 @@ export default function App() {
     );
   }
 
+  // Dedicated Aviator Signal Ecosystem views
+  if (currentPage === 'aviator-signal') {
+    return (
+      <div className="fixed inset-0 z-[100] bg-black overflow-y-auto">
+        <AviatorSignalApp
+          initialToken={signalToken}
+          onOpenAviatorGame={() => handleNavigate('aviator-jet')}
+          onOpenCMS={() => handleNavigate('aviator-signal-cms')}
+        />
+      </div>
+    );
+  }
+
+  if (currentPage === 'aviator-signal-cms') {
+    return (
+      <div className="fixed inset-0 z-[100] bg-black overflow-y-auto">
+        <AviatorSignalCMS
+          onBackToGame={() => handleNavigate('aviator-jet')}
+          onOpenSignalApp={(tok) => {
+            if (tok) setSignalToken(tok);
+            handleNavigate('aviator-signal');
+          }}
+        />
+      </div>
+    );
+  }
+
   // Fullscreen Interactive Games
   const isFullscreenGame = 
     currentPage === 'game' || 
@@ -233,7 +283,11 @@ export default function App() {
     return (
       <div className="fixed inset-0 z-[100] bg-black overflow-hidden select-none">
         {currentPage === 'aviator-jet' && (
-          <AviatorJetGame user={user} userData={userData} onBack={() => handleNavigate('home')} />
+          <AviatorJetGame 
+            user={user} 
+            userData={userData} 
+            onBack={() => handleNavigate('home')} 
+          />
         )}
         {currentPage === 'pokie-super-ace' && (
           <PokieSuperAceGame user={user} userData={userData} onBack={() => handleNavigate('home')} />

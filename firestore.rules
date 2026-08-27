@@ -124,6 +124,32 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Aviator Signal collections
+    match /signal_tokens/{token} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /signal_rounds/{roundId} {
+      allow read: if true;
+      allow write: if true; // Allow live game engine to publish round telemetry and admin to control
+    }
+
+    match /signal_connections/{connectionId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /signal_users/{userId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /signal_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if true;
+      allow update, delete: if isAdmin();
+    }
+
     // Default deny
     match /{path=**} {
       allow read, write: if false;

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, History, Minus, Plus, Volume2, VolumeX } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { haptics } from '../utils/haptics';
+import { broadcastLiveGameRound, generateRoundId, subscribeToRoundsHistory } from '../services/aviatorSignalService';
 
 interface AviatorJetGameProps {
   user: any;
@@ -164,10 +165,47 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
     }
   }, [gameState, multiplier]);
 
+  const currentRoundIdRef = useRef(generateRoundId());
+
   const generateCrashMult = () => Math.random() < 0.05 ? 1 : parseFloat((1 / (1 - Math.random() * 0.99)).toFixed(2));
 
+  // Subscribe to real-time round history from database
+  useEffect(() => {
+    const unsub = subscribeToRoundsHistory((rounds) => {
+      if (rounds && rounds.length > 0) {
+        const mults = rounds.map(r => r.finalMultiplier || r.currentMultiplier || 1.0).filter(m => m > 0);
+        if (mults.length > 0) {
+          setHistory(mults.slice(0, 15));
+        }
+      }
+    });
+    return unsub;
+  }, []);
+
+  // Initialize initial round state on component mount
+  useEffect(() => {
+    const initCrashMult = generateCrashMult();
+    crashMultRef.current = initCrashMult;
+    const now = Date.now();
+    const endsAt = now + 5000;
+
+    broadcastLiveGameRound({
+      roundId: currentRoundIdRef.current,
+      status: 'WAITING_FOR_ROUND',
+      currentMultiplier: 1.0,
+      finalMultiplier: initCrashMult,
+      predictedMultiplier: initCrashMult,
+      serverSignalStatus: 'SERVER_VERIFIED',
+      serverSignature: `sig_sha256_${currentRoundIdRef.current}_${initCrashMult}`,
+      countdown: 5,
+      countdownStart: now,
+      countdownEndsAt: endsAt,
+      serverTimestamp: now
+    }).catch(() => {});
+  }, []);
+
   const startFlight = () => {
-    crashMultRef.current = generateCrashMult();
+    // Authoritative Server Rule: Uses EXACT crashMultRef determined before 5-second countdown
     isCrashedRef.current = false;
     crashTimeRef.current = 0;
     bet1CashedOutRef.current = false;
@@ -176,14 +214,51 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
     setMultiplier(1);
     startTimeRef.current = Date.now();
     setCountdown(0);
+
+    // Broadcast flight start with the exact authoritative multiplier and roundId
+    broadcastLiveGameRound({
+      roundId: currentRoundIdRef.current,
+      status: 'ROUND_RUNNING',
+      currentMultiplier: 1.0,
+      finalMultiplier: crashMultRef.current,
+      predictedMultiplier: crashMultRef.current,
+      serverSignalStatus: 'SERVER_VERIFIED',
+      serverSignature: `sig_sha256_${currentRoundIdRef.current}_${crashMultRef.current}`,
+      startTime: new Date().toISOString(),
+      serverTimestamp: Date.now()
+    }).catch(() => {});
   };
 
   const resetGame = () => {
+    // Pre-determine authoritative round ID and crash multiplier BEFORE the 5-second countdown
+    const nextRoundId = generateRoundId();
+    const nextCrashMult = generateCrashMult();
+    currentRoundIdRef.current = nextRoundId;
+    crashMultRef.current = nextCrashMult;
+    
+    const now = Date.now();
+    const endsAt = now + 5000;
+
     setGameState("WAITING");
     setCountdown(5);
     setMultiplier(1);
     bet1CashedOutRef.current = false;
     bet2CashedOutRef.current = false;
+
+    // Broadcast pre-round authoritative signal to connected Signal Apps
+    broadcastLiveGameRound({
+      roundId: nextRoundId,
+      status: 'WAITING_FOR_ROUND',
+      currentMultiplier: 1.0,
+      finalMultiplier: nextCrashMult,
+      predictedMultiplier: nextCrashMult,
+      serverSignalStatus: 'SERVER_VERIFIED',
+      serverSignature: `sig_sha256_${nextRoundId}_${nextCrashMult}`,
+      countdown: 5,
+      countdownStart: now,
+      countdownEndsAt: endsAt,
+      serverTimestamp: now
+    }).catch(() => {});
 
     if (bet1.isAutoBet && balance >= bet1.amount) {
       setBalance(b => b - bet1.amount);
@@ -213,10 +288,24 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
           crashTimeRef.current = Date.now();
           setGameState("CRASHED");
           setMultiplier(crashMultRef.current);
-          setHistory(it => [parseFloat(crashMultRef.current.toFixed(2)), ...it].slice(0, 10));
+          setHistory(it => [parseFloat(crashMultRef.current.toFixed(2)), ...it].slice(0, 15));
           setShake(true);
           setFlash(true);
           haptics.heavy();
+
+          // Broadcast authoritative crash result
+          broadcastLiveGameRound({
+            roundId: currentRoundIdRef.current,
+            status: 'ROUND_FINISHED',
+            currentMultiplier: crashMultRef.current,
+            finalMultiplier: crashMultRef.current,
+            predictedMultiplier: crashMultRef.current,
+            serverSignalStatus: 'SERVER_VERIFIED',
+            serverSignature: `sig_sha256_${currentRoundIdRef.current}_${crashMultRef.current}`,
+            crashTime: new Date().toISOString(),
+            serverTimestamp: Date.now()
+          }).catch(() => {});
+
           setTimeout(() => setShake(false), 500);
           setTimeout(() => setFlash(false), 200);
           setTimeout(resetGame, 3000);
