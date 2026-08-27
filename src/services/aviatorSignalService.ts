@@ -20,6 +20,8 @@ import {
   SignalGameConnection, 
   SignalRound, 
   SignalLog, 
+  SignalEvent,
+  SignalEventType,
   SubscriptionType, 
   SignalConnectionStatus, 
   SignalResultStatus 
@@ -30,25 +32,16 @@ const USERS_COLLECTION = 'signal_users';
 const CONNECTIONS_COLLECTION = 'signal_connections';
 const ROUNDS_COLLECTION = 'signal_rounds';
 const LOGS_COLLECTION = 'signal_logs';
+const EVENTS_COLLECTION = 'signal_events';
 
 export const DEFAULT_GAME_ID = 'aviator_jet_main';
 
-// Generate a cryptographically strong, user-safe token for links
-export function generateSecureSignalToken(): string {
-  const chars = 'abcdefghjkmnpqrstuvwxyz23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-  let result = 'av_';
-  for (let i = 0; i < 16; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
-
-// Generate unique Round ID
+// Generate unique Round ID in format: AVI-YYYYMMDD-XXXXX
 export function generateRoundId(): string {
   const date = new Date();
-  const dateStr = date.toISOString().slice(2, 10).replace(/-/g, '');
-  const rand = Math.floor(1000 + Math.random() * 9000);
-  return `RD-${dateStr}-${rand}`;
+  const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
+  const rand = Math.floor(10000 + Math.random() * 90000);
+  return `AVI-${dateStr}-${rand}`;
 }
 
 // Helper to strip undefined values so Firestore never errors on setDoc/updateDoc
@@ -78,9 +71,11 @@ export async function initializeAviatorSignalDefaults() {
         apiUrl: 'https://gateway.aviator-network.internal/v2/telemetry',
         signalAppUrl: originUrl,
         signalAppStatus: 'CONNECTED',
+        signalAppEnabled: true,
         wsUrl: 'wss://stream.aviator-network.internal/live/session',
         authHeader: 'Bearer av_sec_live_9882a17f6c310b8e9921',
         connectionStatus: 'CONNECTED',
+        syncStatus: 'LIVE',
         lastSyncAt: new Date().toISOString(),
         serverVerifiedMode: true,
         currentSessionId: 'sess_' + Math.floor(100000 + Math.random() * 900000),
@@ -89,11 +84,13 @@ export async function initializeAviatorSignalDefaults() {
       await setDoc(connDocRef, defaultConn);
     } else {
       const existing = connSnap.data() as SignalGameConnection;
-      if (!existing.signalAppUrl || !existing.signalAppStatus) {
-        await updateDoc(connDocRef, cleanFirestoreObject({
-          signalAppUrl: existing.signalAppUrl || originUrl,
-          signalAppStatus: existing.signalAppStatus || 'CONNECTED'
-        }));
+      const updates: any = {};
+      if (!existing.signalAppUrl) updates.signalAppUrl = originUrl;
+      if (!existing.signalAppStatus) updates.signalAppStatus = 'CONNECTED';
+      if (existing.signalAppEnabled === undefined) updates.signalAppEnabled = true;
+      if (!existing.syncStatus) updates.syncStatus = 'LIVE';
+      if (Object.keys(updates).length > 0) {
+        await updateDoc(connDocRef, cleanFirestoreObject(updates));
       }
     }
 
@@ -127,7 +124,8 @@ export async function initializeAviatorSignalDefaults() {
       for (let i = 0; i < seedMultipliers.length; i++) {
         const item = seedMultipliers[i];
         const roundTime = new Date(now - (seedMultipliers.length - i) * 28000).toISOString();
-        const rId = `RD-${roundTime.slice(2, 10).replace(/-/g, '')}-${1000 + i}`;
+        const dateStr = roundTime.slice(0, 10).replace(/-/g, '');
+        const rId = `AVI-${dateStr}-${18430 + i}`;
         await setDoc(doc(db, ROUNDS_COLLECTION, rId), cleanFirestoreObject({
           id: rId,
           roundId: rId,
@@ -138,7 +136,7 @@ export async function initializeAviatorSignalDefaults() {
           finalMultiplier: item.mult,
           serverSignalStatus: item.status,
           predictedMultiplier: item.verified ? item.mult : null,
-          serverSignature: item.verified ? `sig_sha256_${Math.random().toString(36).substring(2, 12)}` : null,
+          serverSignature: item.verified ? `sig_sha256_${rId}_${item.mult}` : null,
           createdAt: roundTime,
           startTime: roundTime,
           crashTime: new Date(new Date(roundTime).getTime() + 12000).toISOString()
@@ -150,45 +148,26 @@ export async function initializeAviatorSignalDefaults() {
     const currentDocRef = doc(db, ROUNDS_COLLECTION, 'CURRENT_LIVE_ROUND');
     const currentSnap = await getDoc(currentDocRef);
     if (!currentSnap.exists()) {
+      const now = Date.now();
+      const dateStr = new Date(now).toISOString().slice(0, 10).replace(/-/g, '');
+      const initRoundId = `AVI-${dateStr}-18453`;
       await setDoc(currentDocRef, {
         id: 'CURRENT_LIVE_ROUND',
-        roundId: 'RD-INIT-9001',
+        roundId: initRoundId,
         sessionId: 'sess_live_core',
         gameId: DEFAULT_GAME_ID,
         status: 'WAITING_FOR_ROUND',
         currentMultiplier: 1.0,
         serverSignalStatus: 'SERVER_VERIFIED',
-        predictedMultiplier: 2.85,
+        predictedMultiplier: 2.35,
+        finalMultiplier: 2.35,
+        countdown: 5,
+        countdownStart: now,
+        countdownEndsAt: now + 5000,
+        serverTimestamp: now,
+        serverSignature: `sig_sha256_${initRoundId}_2.35`,
         createdAt: new Date().toISOString(),
         startTime: new Date().toISOString()
-      });
-    }
-
-    // 4. Create sample demo token if no tokens exist
-    const tokensSnap = await getDocs(query(collection(db, TOKENS_COLLECTION), limit(1)));
-    if (tokensSnap.empty) {
-      const demoToken = 'av_demo_vip_2026';
-      const expireDate = new Date();
-      expireDate.setDate(expireDate.getDate() + 30);
-      
-      await setDoc(doc(db, TOKENS_COLLECTION, demoToken), {
-        token: demoToken,
-        userId: 'usr_demo_vip',
-        userName: 'VIP Beta Member',
-        status: 'active',
-        subscriptionType: 'premium',
-        expiresAt: expireDate.toISOString(),
-        connectedGameId: DEFAULT_GAME_ID,
-        createdAt: new Date().toISOString(),
-        lastActiveAt: new Date().toISOString()
-      });
-
-      await setDoc(doc(db, USERS_COLLECTION, 'usr_demo_vip'), {
-        id: 'usr_demo_vip',
-        name: 'VIP Beta Member',
-        status: 'active',
-        createdAt: new Date().toISOString(),
-        notes: 'Pre-configured demonstration account'
       });
     }
   } catch (err) {
@@ -197,8 +176,229 @@ export async function initializeAviatorSignalDefaults() {
 }
 
 // ----------------------------------------------------
-// TOKEN MANAGEMENT (ADMIN CMS)
+// GAME CONNECTION & SIGNAL APP CONTROL (ADMIN CMS)
 // ----------------------------------------------------
+
+export async function toggleSignalAppStatus(enabled: boolean): Promise<void> {
+  const docRef = doc(db, CONNECTIONS_COLLECTION, DEFAULT_GAME_ID);
+  await updateDoc(docRef, {
+    signalAppEnabled: enabled,
+    signalAppStatus: enabled ? 'CONNECTED' : 'DISCONNECTED',
+    lastSyncAt: new Date().toISOString()
+  });
+}
+
+export async function updateGameConnectionSettings(data: Partial<SignalGameConnection>): Promise<void> {
+  const docRef = doc(db, CONNECTIONS_COLLECTION, DEFAULT_GAME_ID);
+  await setDoc(docRef, cleanFirestoreObject({
+    ...data,
+    id: DEFAULT_GAME_ID,
+    gameId: DEFAULT_GAME_ID,
+    lastSyncAt: new Date().toISOString()
+  }), { merge: true });
+}
+
+export async function testGameConnection(): Promise<{ success: boolean; pingMs: number; message: string }> {
+  const startTime = Date.now();
+  try {
+    const docRef = doc(db, CONNECTIONS_COLLECTION, DEFAULT_GAME_ID);
+    await getDoc(docRef);
+    const ping = Math.max(12, Date.now() - startTime);
+    
+    await updateDoc(docRef, {
+      connectionStatus: 'CONNECTED',
+      syncStatus: 'LIVE',
+      lastSyncAt: new Date().toISOString(),
+      pingMs: ping
+    });
+
+    return {
+      success: true,
+      pingMs: ping,
+      message: `Successfully connected to Aviator Engine. Ping: ${ping}ms.`
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      pingMs: 0,
+      message: `Connection failed: ${err.message || 'Server timeout'}`
+    };
+  }
+}
+
+// Fast Heartbeat / Ping method for client Signal App
+export async function pingAuthoritativeServer(): Promise<{
+  alive: boolean;
+  serverTimestamp: number;
+  pingMs: number;
+  currentRound: SignalRound | null;
+}> {
+  const start = Date.now();
+  try {
+    const roundSnap = await getDoc(doc(db, ROUNDS_COLLECTION, 'CURRENT_LIVE_ROUND'));
+    const latency = Math.max(8, Date.now() - start);
+    return {
+      alive: true,
+      serverTimestamp: Date.now(),
+      pingMs: latency,
+      currentRound: roundSnap.exists() ? (roundSnap.data() as SignalRound) : null
+    };
+  } catch (e) {
+    return {
+      alive: false,
+      serverTimestamp: Date.now(),
+      pingMs: 0,
+      currentRound: null
+    };
+  }
+}
+
+// ----------------------------------------------------
+// FAST RECOVERY & STATE SYNCHRONIZATION FOR TAB SWITCHES
+// ----------------------------------------------------
+
+export async function getCurrentRoundState(): Promise<SignalRound | null> {
+  try {
+    const docRef = doc(db, ROUNDS_COLLECTION, 'CURRENT_LIVE_ROUND');
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return snap.data() as SignalRound;
+    }
+    return null;
+  } catch (err) {
+    console.error('Error fetching current round state:', err);
+    return null;
+  }
+}
+
+export async function getLatestRoundsHistory(count: number = 20): Promise<SignalRound[]> {
+  try {
+    const q = query(collection(db, ROUNDS_COLLECTION), orderBy('createdAt', 'desc'), limit(count + 5));
+    const snap = await getDocs(q);
+    const rounds: SignalRound[] = [];
+    snap.forEach((d) => {
+      if (d.id !== 'CURRENT_LIVE_ROUND') {
+        rounds.push(d.data() as SignalRound);
+      }
+    });
+    return rounds.slice(0, count);
+  } catch (err) {
+    console.error('Error fetching rounds history:', err);
+    return [];
+  }
+}
+
+export async function getLatestSignalAndRecentRounds(): Promise<{
+  currentRound: SignalRound | null;
+  recentRounds: SignalRound[];
+  connection: SignalGameConnection | null;
+  serverTimestamp: number;
+}> {
+  const [currentRound, recentRounds, connSnap] = await Promise.all([
+    getCurrentRoundState(),
+    getLatestRoundsHistory(20),
+    getDoc(doc(db, CONNECTIONS_COLLECTION, DEFAULT_GAME_ID))
+  ]);
+
+  return {
+    currentRound,
+    recentRounds,
+    connection: connSnap.exists() ? (connSnap.data() as SignalGameConnection) : null,
+    serverTimestamp: Date.now()
+  };
+}
+
+// ----------------------------------------------------
+// AUTHORITATIVE BROADCAST SYSTEM
+// ----------------------------------------------------
+
+// Function called by Aviator game to publish authoritative live synchronized state
+export async function broadcastLiveGameRound(payload: {
+  roundId: string;
+  status: SignalConnectionStatus;
+  currentMultiplier: number;
+  finalMultiplier?: number;
+  serverSignalStatus: SignalResultStatus;
+  predictedMultiplier?: number | null;
+  serverSignature?: string;
+  countdown?: number;
+  countdownStart?: number;
+  countdownEndsAt?: number;
+  serverTimestamp?: number;
+  startTime?: string;
+  crashTime?: string;
+}): Promise<void> {
+  try {
+    const currentDocRef = doc(db, ROUNDS_COLLECTION, 'CURRENT_LIVE_ROUND');
+    const updatePayload: any = {
+      ...payload,
+      id: 'CURRENT_LIVE_ROUND',
+      gameId: DEFAULT_GAME_ID,
+      serverTimestamp: payload.serverTimestamp || Date.now(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (payload.status === 'ROUND_RUNNING' && !payload.startTime) {
+      updatePayload.startTime = new Date().toISOString();
+    }
+    if (payload.status === 'ROUND_FINISHED' || payload.status === 'CRASHED') {
+      updatePayload.crashTime = new Date().toISOString();
+      
+      // Archive completed round to history collection
+      const archiveRef = doc(db, ROUNDS_COLLECTION, payload.roundId);
+      await setDoc(archiveRef, cleanFirestoreObject({
+        ...payload,
+        id: payload.roundId,
+        gameId: DEFAULT_GAME_ID,
+        createdAt: new Date().toISOString(),
+        crashTime: new Date().toISOString(),
+        serverTimestamp: Date.now()
+      }), { merge: true });
+    }
+
+    await setDoc(currentDocRef, cleanFirestoreObject(updatePayload), { merge: true });
+  } catch (err) {
+    console.error('Error broadcasting live round:', err);
+  }
+}
+
+// ----------------------------------------------------
+// AUDIT LOGGING
+// ----------------------------------------------------
+
+export async function logSignalActivity(
+  action?: string, 
+  metadata?: Record<string, any>
+): Promise<void> {
+  try {
+    const logId = 'log_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    await setDoc(doc(db, LOGS_COLLECTION, logId), {
+      id: logId,
+      action: action || 'UNKNOWN',
+      timestamp: new Date().toISOString(),
+      metadata: metadata || {}
+    });
+  } catch (err) {
+    // Non-blocking log fail
+  }
+}
+
+// ----------------------------------------------------
+// REALTIME LISTENERS (Single Source of Truth)
+// ----------------------------------------------------
+
+// ----------------------------------------------------
+// TOKEN MANAGEMENT (COMPATIBILITY HELPERS)
+// ----------------------------------------------------
+
+export function generateSecureSignalToken(): string {
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let result = 'av_';
+  for (let i = 0; i < 16; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
 
 export interface CreateTokenParams {
   userName: string;
@@ -241,273 +441,44 @@ export async function createSignalAccess(params: CreateTokenParams): Promise<{ t
     lastActiveAt: new Date().toISOString()
   };
 
-  // Persist User & Token
   await setDoc(doc(db, USERS_COLLECTION, userId), userDoc);
   await setDoc(doc(db, TOKENS_COLLECTION, tokenString), tokenDoc);
 
-  // Log action
-  await logSignalActivity(tokenString, userId, params.userName, 'CREATE_ACCESS_LINK', {
-    subscriptionType: params.subscriptionType,
-    durationDays: params.durationDays
-  });
-
-  const baseUrl = window.location.origin;
-  const link = `${baseUrl}/#signal/${tokenString}`;
-
-  return { token: tokenDoc, link };
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://yourwebsite.com';
+  return {
+    token: tokenDoc,
+    link: `${origin}/#signal`
+  };
 }
 
 export async function updateTokenStatus(token: string, status: 'active' | 'revoked' | 'expired'): Promise<void> {
-  const tokenRef = doc(db, TOKENS_COLLECTION, token);
-  await updateDoc(tokenRef, { status, updatedAt: new Date().toISOString() });
-  await logSignalActivity(token, undefined, undefined, `TOKEN_STATUS_${status.toUpperCase()}`);
+  const docRef = doc(db, TOKENS_COLLECTION, token);
+  await updateDoc(docRef, {
+    status,
+    lastActiveAt: new Date().toISOString()
+  });
 }
 
-export async function updateTokenSubscription(
-  token: string, 
-  subscriptionType: SubscriptionType, 
-  expiresAtIso: string
-): Promise<void> {
-  const tokenRef = doc(db, TOKENS_COLLECTION, token);
-  await updateDoc(tokenRef, { 
-    subscriptionType, 
-    expiresAt: expiresAtIso, 
-    updatedAt: new Date().toISOString() 
+export async function extendTokenSubscription(token: string, addDays: number): Promise<string> {
+  const docRef = doc(db, TOKENS_COLLECTION, token);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) {
+    throw new Error('Token not found');
+  }
+  const data = snap.data() as SignalToken;
+  const currentExp = new Date(data.expiresAt);
+  const newExp = new Date(Math.max(Date.now(), currentExp.getTime()) + addDays * 24 * 60 * 60 * 1000);
+  
+  await updateDoc(docRef, {
+    expiresAt: newExp.toISOString(),
+    status: 'active'
   });
-  await logSignalActivity(token, undefined, undefined, 'UPDATE_SUBSCRIPTION', { subscriptionType, expiresAt: expiresAtIso });
-}
-
-export async function extendTokenSubscription(token: string, additionalDays: number): Promise<string> {
-  const tokenRef = doc(db, TOKENS_COLLECTION, token);
-  const snap = await getDoc(tokenRef);
-  if (!snap.exists()) throw new Error('Token not found');
-  
-  const currentExpiry = new Date(snap.data().expiresAt || Date.now());
-  const baseDate = currentExpiry.getTime() > Date.now() ? currentExpiry : new Date();
-  baseDate.setDate(baseDate.getDate() + additionalDays);
-  
-  const newExpiryIso = baseDate.toISOString();
-  await updateDoc(tokenRef, { 
-    expiresAt: newExpiryIso, 
-    status: 'active',
-    updatedAt: new Date().toISOString() 
-  });
-  
-  await logSignalActivity(token, undefined, undefined, 'EXTEND_SUBSCRIPTION', { addedDays: additionalDays, newExpiry: newExpiryIso });
-  return newExpiryIso;
+  return newExp.toISOString();
 }
 
 export async function deleteSignalToken(token: string): Promise<void> {
-  const tokenRef = doc(db, TOKENS_COLLECTION, token);
-  await deleteDoc(tokenRef);
-  await logSignalActivity(token, undefined, undefined, 'DELETE_TOKEN');
+  await deleteDoc(doc(db, TOKENS_COLLECTION, token));
 }
-
-// ----------------------------------------------------
-// TOKEN VALIDATION (CUSTOMER CLIENT)
-// ----------------------------------------------------
-
-export interface TokenValidationResult {
-  valid: boolean;
-  tokenData: SignalToken | null;
-  error?: 'NOT_FOUND' | 'REVOKED' | 'EXPIRED' | 'NETWORK_ERROR';
-  errorMessage?: string;
-  isExpired?: boolean;
-  remainingDays?: number;
-  remainingHours?: number;
-}
-
-export async function validateSignalToken(tokenString: string): Promise<TokenValidationResult> {
-  if (!tokenString || tokenString.trim() === '') {
-    return { valid: false, tokenData: null, error: 'NOT_FOUND', errorMessage: 'No access token provided.' };
-  }
-
-  try {
-    const cleanToken = tokenString.trim();
-    const tokenRef = doc(db, TOKENS_COLLECTION, cleanToken);
-    const snap = await getDoc(tokenRef);
-
-    if (!snap.exists()) {
-      return { 
-        valid: false, 
-        tokenData: null, 
-        error: 'NOT_FOUND', 
-        errorMessage: 'Invalid or unregistered Signal access link. Please obtain a private link from the administrator.' 
-      };
-    }
-
-    const data = snap.data() as SignalToken;
-
-    if (data.status === 'revoked') {
-      return { 
-        valid: false, 
-        tokenData: data, 
-        error: 'REVOKED', 
-        errorMessage: 'This Signal link has been revoked or deactivated by the administrator.' 
-      };
-    }
-
-    // Check expiry
-    const now = Date.now();
-    const expiryTime = new Date(data.expiresAt).getTime();
-    const diffMs = expiryTime - now;
-
-    if (diffMs <= 0) {
-      // Mark as expired in DB if still marked active
-      if (data.status === 'active') {
-        await updateDoc(tokenRef, { status: 'expired' }).catch(() => {});
-      }
-      return { 
-        valid: false, 
-        tokenData: { ...data, status: 'expired' }, 
-        error: 'EXPIRED', 
-        isExpired: true,
-        errorMessage: 'Your Signal subscription has expired. Please contact the administrator to renew access.' 
-      };
-    }
-
-    const remainingDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const remainingHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-
-    // Update last activity timestamp
-    await updateDoc(tokenRef, { lastActiveAt: new Date().toISOString() }).catch(() => {});
-
-    // Log connection
-    await logSignalActivity(cleanToken, data.userId, data.userName, 'CLIENT_CONNECTED', {
-      userAgent: navigator.userAgent
-    }).catch(() => {});
-
-    return { 
-      valid: true, 
-      tokenData: data, 
-      remainingDays, 
-      remainingHours 
-    };
-  } catch (err: any) {
-    console.error('Error validating signal token:', err);
-    return { valid: false, tokenData: null, error: 'NETWORK_ERROR', errorMessage: err.message || 'Connection error' };
-  }
-}
-
-// ----------------------------------------------------
-// GAME INTEGRATION & REAL-TIME BROADCAST ENGINE
-// ----------------------------------------------------
-
-export async function updateGameConnectionSettings(config: Partial<SignalGameConnection>): Promise<void> {
-  const docRef = doc(db, CONNECTIONS_COLLECTION, DEFAULT_GAME_ID);
-  await setDoc(docRef, cleanFirestoreObject({
-    ...config,
-    id: DEFAULT_GAME_ID,
-    gameId: DEFAULT_GAME_ID,
-    lastSyncAt: new Date().toISOString()
-  }), { merge: true });
-}
-
-export async function testGameConnection(): Promise<{ success: boolean; pingMs: number; message: string }> {
-  const startTime = Date.now();
-  try {
-    const docRef = doc(db, CONNECTIONS_COLLECTION, DEFAULT_GAME_ID);
-    const snap = await getDoc(docRef);
-    const ping = Math.max(12, Date.now() - startTime);
-    
-    await updateDoc(docRef, {
-      connectionStatus: 'CONNECTED',
-      lastSyncAt: new Date().toISOString(),
-      pingMs: ping
-    });
-
-    return {
-      success: true,
-      pingMs: ping,
-      message: `Successfully connected to Aviator Engine. Ping: ${ping}ms.`
-    };
-  } catch (err: any) {
-    return {
-      success: false,
-      pingMs: 0,
-      message: `Connection failed: ${err.message || 'Server timeout'}`
-    };
-  }
-}
-
-// Function called by Aviator game or CMS to publish live synchronized state
-export async function broadcastLiveGameRound(payload: {
-  roundId: string;
-  status: SignalConnectionStatus;
-  currentMultiplier: number;
-  finalMultiplier?: number;
-  serverSignalStatus: SignalResultStatus;
-  predictedMultiplier?: number | null;
-  serverSignature?: string;
-  countdown?: number;
-  countdownStart?: number;
-  countdownEndsAt?: number;
-  serverTimestamp?: number;
-  startTime?: string;
-  crashTime?: string;
-}): Promise<void> {
-  try {
-    const currentDocRef = doc(db, ROUNDS_COLLECTION, 'CURRENT_LIVE_ROUND');
-    const updatePayload: any = {
-      ...payload,
-      id: 'CURRENT_LIVE_ROUND',
-      gameId: DEFAULT_GAME_ID,
-      updatedAt: new Date().toISOString()
-    };
-
-    if (payload.status === 'ROUND_RUNNING' && !payload.startTime) {
-      updatePayload.startTime = new Date().toISOString();
-    }
-    if (payload.status === 'ROUND_FINISHED' || payload.status === 'CRASHED') {
-      updatePayload.crashTime = new Date().toISOString();
-      
-      // Also archive completed round to history collection
-      const archiveRef = doc(db, ROUNDS_COLLECTION, payload.roundId);
-      await setDoc(archiveRef, cleanFirestoreObject({
-        ...payload,
-        id: payload.roundId,
-        gameId: DEFAULT_GAME_ID,
-        createdAt: new Date().toISOString(),
-        crashTime: new Date().toISOString()
-      }), { merge: true });
-    }
-
-    await setDoc(currentDocRef, cleanFirestoreObject(updatePayload), { merge: true });
-  } catch (err) {
-    console.error('Error broadcasting live round:', err);
-  }
-}
-
-// ----------------------------------------------------
-// AUDIT LOGGING
-// ----------------------------------------------------
-
-export async function logSignalActivity(
-  token?: string, 
-  userId?: string, 
-  userName?: string, 
-  action?: string, 
-  metadata?: Record<string, any>
-): Promise<void> {
-  try {
-    const logId = 'log_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
-    await setDoc(doc(db, LOGS_COLLECTION, logId), {
-      id: logId,
-      token: token || '',
-      userId: userId || '',
-      userName: userName || '',
-      action: action || 'UNKNOWN',
-      timestamp: new Date().toISOString(),
-      metadata: metadata || {}
-    });
-  } catch (err) {
-    // Non-blocking log fail
-  }
-}
-
-// ----------------------------------------------------
-// REALTIME LISTENERS
-// ----------------------------------------------------
 
 export function subscribeToSignalTokens(callback: (tokens: SignalToken[]) => void) {
   const q = query(collection(db, TOKENS_COLLECTION), orderBy('createdAt', 'desc'), limit(100));
@@ -523,6 +494,19 @@ export function subscribeToSignalTokens(callback: (tokens: SignalToken[]) => voi
 }
 
 export const subscribeToAllTokens = subscribeToSignalTokens;
+
+export function subscribeToLogs(callback: (logs: SignalLog[]) => void) {
+  const q = query(collection(db, LOGS_COLLECTION), orderBy('timestamp', 'desc'), limit(50));
+  return onSnapshot(q, (snapshot) => {
+    const logs: SignalLog[] = [];
+    snapshot.forEach((d) => {
+      logs.push(d.data() as SignalLog);
+    });
+    callback(logs);
+  }, (err) => {
+    console.error('Logs listener error:', err);
+  });
+}
 
 export function subscribeToGameConnection(callback: (conn: SignalGameConnection | null) => void) {
   const docRef = doc(db, CONNECTIONS_COLLECTION, DEFAULT_GAME_ID);
@@ -562,18 +546,5 @@ export function subscribeToRoundsHistory(callback: (rounds: SignalRound[]) => vo
     callback(rounds);
   }, (err) => {
     console.error('Rounds history listener error:', err);
-  });
-}
-
-export function subscribeToLogs(callback: (logs: SignalLog[]) => void) {
-  const q = query(collection(db, LOGS_COLLECTION), orderBy('timestamp', 'desc'), limit(50));
-  return onSnapshot(q, (snapshot) => {
-    const logs: SignalLog[] = [];
-    snapshot.forEach((d) => {
-      logs.push(d.data() as SignalLog);
-    });
-    callback(logs);
-  }, (err) => {
-    console.error('Logs listener error:', err);
   });
 }

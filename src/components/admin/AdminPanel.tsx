@@ -772,7 +772,7 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
     { id: 'promotions' as TabType, labelBn: 'প্রমোশন অফার', labelEn: 'Promotions', icon: Gift },
     { id: 'announcements' as TabType, labelBn: 'স্ক্রোল ঘোষণা', labelEn: 'Announcements', icon: VolumeIcon },
     { id: 'transactions' as TabType, labelBn: 'ক্যাশিয়ার রিকোয়েস্ট', labelEn: 'Transactions', icon: DollarSign, badge: transactions.filter(t => t.status === 'pending').length },
-    { id: 'signal_management' as TabType, labelBn: 'গেম কানেক্ট (সিগন্যাল)', labelEn: 'Game Connect → Signal', icon: Radio },
+    { id: 'signal_management' as TabType, labelBn: 'গেম সিগন্যাল', labelEn: 'Game Signal', icon: Radio },
     { id: 'users' as TabType, labelBn: 'ইউজার মেম্বার', labelEn: 'Users List', icon: Users },
     { id: 'settings' as TabType, labelBn: 'ওয়েবসাইট সেটিংস', labelEn: 'Site Settings', icon: SettingsIcon },
   ];

@@ -279,13 +279,35 @@ export interface SignalGameConnection {
   apiUrl: string;
   signalAppUrl?: string;
   signalAppStatus?: SignalConnectionStatus;
+  signalAppEnabled?: boolean; // ON / OFF switch for global signal broadcast
   wsUrl?: string;
   authHeader?: string;
   connectionStatus: SignalConnectionStatus;
+  syncStatus?: 'LIVE' | 'RECONNECTING' | 'OFFLINE';
   lastSyncAt: string;
   serverVerifiedMode: boolean; // if true, game backend pushes authorized pre-round multipliers
   currentSessionId?: string;
   pingMs?: number;
+}
+
+export type SignalEventType = 
+  | 'ROUND_CREATED'
+  | 'ROUND_BETTING'
+  | 'ROUND_STARTED'
+  | 'SIGNAL_UPDATED'
+  | 'ROUND_CRASHED'
+  | 'ROUND_COMPLETED'
+  | 'ROUND_NEXT'
+  | 'GAME_STATUS_CHANGED';
+
+export interface SignalEvent {
+  event: SignalEventType;
+  roundId: string;
+  signal?: number | null;
+  currentMultiplier?: number;
+  actualResult?: number;
+  serverTimestamp: number;
+  status: SignalConnectionStatus;
 }
 
 export interface SignalRound {
