@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Radio, 
-  Plus, 
   Copy, 
   CheckCircle2, 
   ExternalLink, 
@@ -9,33 +8,29 @@ import {
   Clock, 
   RefreshCw, 
   AlertTriangle, 
-  Trash2, 
   Power, 
-  Crown, 
-  Calendar, 
-  User, 
   Gamepad2, 
-  Search, 
   Zap, 
   Link as LinkIcon,
   Activity,
-  History as HistoryIcon
+  History as HistoryIcon,
+  Save,
+  Check,
+  Server,
+  Cpu,
+  Share2
 } from 'lucide-react';
 import { 
-  SignalToken, 
   SignalRound, 
-  SignalGameConnection, 
-  SubscriptionType 
+  SignalGameConnection,
+  SignalConnectionStatus 
 } from '../../types';
 import { 
-  createSignalAccess, 
-  subscribeToAllTokens, 
-  updateTokenStatus, 
-  updateTokenSubscription, 
-  deleteSignalToken, 
   subscribeToCurrentRound, 
   subscribeToRoundsHistory, 
   subscribeToGameConnection, 
+  updateGameConnectionSettings,
+  testGameConnection,
   DEFAULT_GAME_ID,
   initializeAviatorSignalDefaults
 } from '../../services/aviatorSignalService';
@@ -47,38 +42,28 @@ interface SignalManagementTabProps {
   registeredUsers?: Array<{ uid: string; name?: string; username?: string; phone?: string }>;
 }
 
-export default function SignalManagementTab({ lang, showToast, registeredUsers = [] }: SignalManagementTabProps) {
-  const [tokens, setTokens] = useState<SignalToken[]>([]);
+export default function SignalManagementTab({ lang, showToast }: SignalManagementTabProps) {
   const [currentRound, setCurrentRound] = useState<SignalRound | null>(null);
   const [roundHistory, setRoundHistory] = useState<SignalRound[]>([]);
   const [connection, setConnection] = useState<SignalGameConnection | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Form State
-  const [userName, setUserName] = useState('');
-  const [userPhone, setUserPhone] = useState('');
-  const [subscriptionType, setSubscriptionType] = useState<SubscriptionType>('premium');
-  const [durationDays, setDurationDays] = useState<number>(30);
-  const [notes, setNotes] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Search & Filter
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'revoked' | 'expired'>('all');
-  const [copiedToken, setCopiedToken] = useState<string | null>(null);
-  const [createdResult, setCreatedResult] = useState<{ token: SignalToken; link: string } | null>(null);
+  // Editable configuration state
+  const [signalAppUrl, setSignalAppUrl] = useState('');
+  const [gameName, setGameName] = useState('Aviator');
+  const [gameId, setGameId] = useState(DEFAULT_GAME_ID);
+  const [isSavingUrl, setIsSavingUrl] = useState(false);
+  const [isTestingConn, setIsTestingConn] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [pingResult, setPingResult] = useState<number | null>(null);
 
   // 1. Initialize defaults and subscriptions
   useEffect(() => {
     initializeAviatorSignalDefaults();
 
-    const unsubTokens = subscribeToAllTokens((tokList) => {
-      setTokens(tokList);
-      setLoading(false);
-    });
-
     const unsubRound = subscribeToCurrentRound((round) => {
       setCurrentRound(round);
+      setLoading(false);
     });
 
     const unsubHistory = subscribeToRoundsHistory((history) => {
@@ -86,691 +71,438 @@ export default function SignalManagementTab({ lang, showToast, registeredUsers =
     });
 
     const unsubConn = subscribeToGameConnection((conn) => {
-      setConnection(conn);
+      if (conn) {
+        setConnection(conn);
+        if (conn.signalAppUrl) {
+          setSignalAppUrl(conn.signalAppUrl);
+        } else if (typeof window !== 'undefined') {
+          setSignalAppUrl(`${window.location.origin}/#signal`);
+        }
+        if (conn.gameName) setGameName(conn.gameName);
+        if (conn.gameId) setGameId(conn.gameId);
+        if (conn.pingMs) setPingResult(conn.pingMs);
+      }
     });
 
     return () => {
-      unsubTokens();
       unsubRound();
       unsubHistory();
       unsubConn();
     };
   }, []);
 
-  // 2. Handle Create Access Link
-  const handleCreateAccess = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userName.trim()) {
-      showToast(lang === 'bn' ? 'অনুগ্রহ করে গ্রাহকের নাম লিখুন!' : 'Please enter customer name!');
+  // Set default URL on first mount if empty
+  useEffect(() => {
+    if (!signalAppUrl && typeof window !== 'undefined') {
+      setSignalAppUrl(`${window.location.origin}/#signal`);
+    }
+  }, [signalAppUrl]);
+
+  // 2. Save Signal App URL
+  const handleSaveSignalUrl = async () => {
+    const trimmed = signalAppUrl.trim();
+    if (!trimmed) {
+      showToast(lang === 'bn' ? 'অনুগ্রহ করে সঠিক URL লিখুন!' : 'Please enter a valid Signal App URL!');
       return;
     }
 
-    setIsSubmitting(true);
+    setIsSavingUrl(true);
     try {
       haptics.impact();
-      const res = await createSignalAccess({
-        userName: userName.trim(),
-        phone: userPhone.trim(),
-        subscriptionType,
-        durationDays,
-        connectedGameId: DEFAULT_GAME_ID,
-        notes: notes.trim()
+      await updateGameConnectionSettings({
+        signalAppUrl: trimmed,
+        gameName: gameName.trim() || 'Aviator',
+        gameId: gameId.trim() || DEFAULT_GAME_ID,
+        lastSyncAt: new Date().toISOString()
       });
+      showToast(lang === 'bn' ? 'সিগন্যাল অ্যাপ URL সফলভাবে সংরক্ষিত হয়েছে!' : 'Signal App URL saved successfully!');
+    } catch (err: any) {
+      console.error('Error saving signal app URL:', err);
+      showToast(lang === 'bn' ? 'সংরক্ষণ করতে ত্রুটি হয়েছে!' : 'Failed to save Signal App URL!');
+    } finally {
+      setIsSavingUrl(false);
+    }
+  };
 
-      setCreatedResult(res);
-      setUserName('');
-      setUserPhone('');
-      setNotes('');
-      showToast(lang === 'bn' ? 'সিগন্যাল লিঙ্ক সফলভাবে তৈরি হয়েছে!' : 'Signal access link generated successfully!');
-      
-      // Auto copy
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(res.link);
+  // 3. Copy Single Signal Link
+  const handleCopySignalLink = () => {
+    const urlToCopy = signalAppUrl.trim() || (typeof window !== 'undefined' ? `${window.location.origin}/#signal` : 'https://yourwebsite.com/signal');
+    navigator.clipboard.writeText(urlToCopy);
+    setCopiedLink(true);
+    haptics.success();
+    showToast(lang === 'bn' ? 'সিগন্যাল লিংক ক্লিপবোর্ডে কপি করা হয়েছে!' : 'Signal App link copied to clipboard!');
+    setTimeout(() => setCopiedLink(false), 2500);
+  };
+
+  // 4. Open Single Signal App
+  const handleOpenSignalApp = () => {
+    haptics.impact();
+    const urlToOpen = signalAppUrl.trim() || (typeof window !== 'undefined' ? `${window.location.origin}/#signal` : 'https://yourwebsite.com/signal');
+    if (typeof window !== 'undefined') {
+      window.open(urlToOpen, '_blank');
+    }
+  };
+
+  // 5. Toggle Game Connection
+  const handleToggleGameConnection = async () => {
+    const newStatus: SignalConnectionStatus = connection?.connectionStatus === 'CONNECTED' ? 'DISCONNECTED' : 'CONNECTED';
+    try {
+      haptics.impact();
+      await updateGameConnectionSettings({
+        connectionStatus: newStatus,
+        signalAppStatus: newStatus,
+        lastSyncAt: new Date().toISOString()
+      });
+      showToast(lang === 'bn' 
+        ? `গেম কানেকশন ${newStatus === 'CONNECTED' ? 'সক্রিয়' : 'নিষ্ক্রিয়'} করা হয়েছে!` 
+        : `Game Connection ${newStatus === 'CONNECTED' ? 'CONNECTED' : 'DISCONNECTED'}!`);
+    } catch (err) {
+      console.error('Error toggling game connection:', err);
+    }
+  };
+
+  // 6. Test Game Connection
+  const handleTestConnection = async () => {
+    setIsTestingConn(true);
+    try {
+      haptics.impact();
+      const res = await testGameConnection();
+      if (res.success) {
+        setPingResult(res.pingMs);
+        showToast(lang === 'bn' ? `কানেকশন সফল! পিং: ${res.pingMs}ms` : `Connection Successful! Ping: ${res.pingMs}ms`);
+      } else {
+        showToast(res.message);
       }
     } catch (err: any) {
-      console.error('Error creating signal token:', err);
-      showToast(lang === 'bn' ? 'তৈরি করতে ত্রুটি হয়েছে!' : 'Error generating signal access!');
+      showToast(`Test failed: ${err.message}`);
     } finally {
-      setIsSubmitting(false);
+      setIsTestingConn(false);
     }
   };
 
-  // 3. Copy Link Helper
-  const handleCopyLink = (tokenStr: string) => {
-    const origin = window.location.origin;
-    const fullLink = `${origin}/#signal/${tokenStr}`;
-    navigator.clipboard.writeText(fullLink);
-    setCopiedToken(tokenStr);
-    haptics.success();
-    showToast(lang === 'bn' ? 'সিগন্যাল লিঙ্ক কপি করা হয়েছে!' : 'Signal Link copied to clipboard!');
-    setTimeout(() => setCopiedToken(null), 2500);
-  };
-
-  // 4. Toggle Token Status
-  const handleToggleStatus = async (token: SignalToken) => {
-    const newStatus = token.status === 'active' ? 'revoked' : 'active';
-    try {
-      haptics.selection();
-      await updateTokenStatus(token.token, newStatus);
-      showToast(
-        lang === 'bn' 
-          ? `সিগন্যাল স্ট্যাটাস ${newStatus === 'active' ? 'সক্রিয়' : 'নিষ্ক্রিয়'} করা হয়েছে!` 
-          : `Signal status updated to ${newStatus}!`
-      );
-    } catch (err) {
-      showToast('Error updating token status');
-    }
-  };
-
-  // 5. Toggle Premium
-  const handleTogglePremium = async (token: SignalToken) => {
-    const newType: SubscriptionType = token.subscriptionType === 'premium' ? 'free' : 'premium';
-    try {
-      haptics.selection();
-      await updateTokenSubscription(token.token, newType, token.expiresAt);
-      showToast(
-        lang === 'bn' 
-          ? `সাবস্ক্রিপশন ${newType === 'premium' ? 'প্রিমিয়াম' : 'ফ্রি'} করা হয়েছে!` 
-          : `Subscription changed to ${newType}!`
-      );
-    } catch (err) {
-      showToast('Error updating subscription');
-    }
-  };
-
-  // 6. Extend 30 Days
-  const handleExtendDays = async (token: SignalToken, days: number = 30) => {
-    const curr = new Date(token.expiresAt);
-    const baseDate = curr.getTime() > Date.now() ? curr : new Date();
-    baseDate.setDate(baseDate.getDate() + days);
-    
-    try {
-      haptics.impact();
-      await updateTokenSubscription(token.token, token.subscriptionType, baseDate.toISOString());
-      if (token.status === 'expired' || token.status === 'revoked') {
-        await updateTokenStatus(token.token, 'active');
-      }
-      showToast(lang === 'bn' ? `মেয়াদ +${days} দিন বৃদ্ধি করা হয়েছে!` : `Validity extended by +${days} days!`);
-    } catch (err) {
-      showToast('Error extending duration');
-    }
-  };
-
-  // 7. Delete Token
-  const handleDelete = async (tokenStr: string) => {
-    if (window.confirm(lang === 'bn' ? 'আপনি কি নিশ্চিত এই সিগন্যাল অ্যাক্সেস মুছে ফেলতে চান?' : 'Are you sure you want to delete this signal token?')) {
-      try {
-        await deleteSignalToken(tokenStr);
-        showToast(lang === 'bn' ? 'সিগন্যাল অ্যাক্সেস মুছে ফেলা হয়েছে!' : 'Signal access deleted!');
-      } catch (err) {
-        showToast('Error deleting token');
-      }
-    }
-  };
-
-  // Filtered tokens
-  const filteredTokens = tokens.filter(t => {
-    const matchesSearch = 
-      t.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.token.toLowerCase().includes(searchQuery.toLowerCase());
-    if (!matchesSearch) return false;
-    if (filterStatus === 'all') return true;
-    return t.status === filterStatus;
-  });
-
-  const isLiveRunning = currentRound?.status === 'ROUND_RUNNING';
-  const isLiveFinished = currentRound?.status === 'ROUND_FINISHED' || currentRound?.status === 'CRASHED';
+  const isConnected = connection?.connectionStatus === 'CONNECTED';
+  const isSignalAppConnected = connection?.signalAppStatus !== 'DISCONNECTED' && isConnected;
 
   return (
-    <div className="space-y-6">
-      {/* SECTION 1: HEADER & LIVE ENGINE MONITOR BANNER */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-rose-950/40 border border-slate-800 rounded-3xl p-5 sm:p-6 text-white shadow-xl">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <span className="p-2 rounded-2xl bg-rose-600/20 text-rose-400 border border-rose-500/30">
-                <Radio className="w-5 h-5 animate-pulse" />
-              </span>
-              <div>
-                <h2 className="text-lg sm:text-xl font-black font-chakra tracking-wide flex items-center gap-2">
-                  <span>Aviator Signal Management</span>
-                  <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
-                    Engine Sync Active
-                  </span>
-                </h2>
-                <p className="text-xs text-slate-400">
-                  {lang === 'bn' 
-                    ? 'গ্রাহকদের জন্য প্রাইভেট সিকিউর সিগন্যাল লিঙ্ক জেনারেট ও ম্যানেজ করুন। গেম এবং সিগন্যাল একই অথরিটেটিভ রাউন্ড ব্যবহার করে।' 
-                    : 'Generate private customer links and monitor authoritative server round synchronization in real-time.'}
-                </p>
-              </div>
+    <div className="space-y-6 max-w-6xl mx-auto">
+      {/* Top Header Card */}
+      <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-xl bg-red-600/10 border border-red-500/20 flex items-center justify-center text-red-600 shadow-xs">
+              <Radio className="w-5 h-5 animate-pulse" />
             </div>
-          </div>
-
-          {/* Engine Status Pill Badges */}
-          <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
-            <div className="bg-slate-800/80 border border-slate-700 px-3 py-2 rounded-2xl flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-              <span className="text-slate-300 font-bold">Round:</span>
-              <span className="text-white font-bold">{currentRound?.roundId || 'RD-LIVE'}</span>
-            </div>
-
-            <div className="bg-slate-800/80 border border-slate-700 px-3 py-2 rounded-2xl flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span className="text-slate-300 font-bold">Pre-Round Result:</span>
-              <span className="text-emerald-400 font-black font-chakra">
-                {currentRound?.predictedMultiplier ? `${currentRound.predictedMultiplier.toFixed(2)}x` : 'Syncing'}
-              </span>
-            </div>
-
-            <div className="bg-slate-800/80 border border-slate-700 px-3 py-2 rounded-2xl flex items-center gap-2">
-              <Activity className="w-4 h-4 text-rose-400" />
-              <span className="text-slate-300 font-bold">Active Links:</span>
-              <span className="text-rose-400 font-black">{tokens.filter(t => t.status === 'active').length}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* SECTION 2: NEWLY CREATED LINK NOTIFICATION */}
-      {createdResult && (
-        <div className="p-4 sm:p-5 bg-emerald-50 border-2 border-emerald-400/80 rounded-2xl shadow-md text-emerald-950 space-y-2.5 animate-fadeIn">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 font-bold text-sm">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-              <span>{lang === 'bn' ? 'সিগন্যাল অ্যাক্সেস লিঙ্ক তৈরি সম্পন্ন!' : 'Signal Access Link Created!'}</span>
-            </div>
-            <button
-              onClick={() => setCreatedResult(null)}
-              className="text-xs text-emerald-700 hover:text-emerald-900 font-bold"
-            >
-              ✕
-            </button>
-          </div>
-
-          <div className="bg-white p-3 rounded-xl border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="overflow-hidden">
-              <div className="text-xs font-bold text-slate-800">{createdResult.token.userName} ({createdResult.token.subscriptionType.toUpperCase()})</div>
-              <div className="text-[11px] font-mono text-emerald-700 truncate select-all">{createdResult.link}</div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => handleCopyLink(createdResult.token.token)}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                <span>{copiedToken === createdResult.token.token ? 'Copied!' : 'Copy Link'}</span>
-              </button>
-              <a
-                href={createdResult.link}
-                target="_blank"
-                rel="noreferrer"
-                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>Open</span>
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SECTION 3: CREATE SIGNAL ACCESS FORM & STATS GRID */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left 2 Columns: Create Form */}
-        <div className="lg:col-span-2 bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <div className="flex items-center gap-2">
-              <span className="p-2 rounded-xl bg-blue-50 text-blue-600">
-                <Plus className="w-4 h-4" />
-              </span>
-              <div>
-                <h3 className="text-base font-black font-chakra text-slate-900">
-                  {lang === 'bn' ? 'নতুন সিগন্যাল অ্যাক্সেস তৈরি করুন' : 'Generate New Signal Access'}
-                </h3>
-                <p className="text-xs text-slate-500">
-                  {lang === 'bn' ? 'গ্রাহকের জন্য স্বতন্ত্র গোপন সিগন্যাল লিঙ্ক জেনারেট করুন।' : 'Issue a secure, tokenized private URL for your player.'}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <form onSubmit={handleCreateAccess} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Customer Name */}
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-700 uppercase flex items-center justify-between">
-                  <span>গ্রাহকের নাম (Customer Name) *</span>
-                  {registeredUsers.length > 0 && (
-                    <span className="text-[10px] text-blue-600 font-normal">মেম্বার সিলেক্ট করা যাবে</span>
-                  )}
-                </label>
-                <div className="relative">
-                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                  <input
-                    type="text"
-                    required
-                    value={userName}
-                    onChange={(e) => setUserName(e.target.value)}
-                    placeholder="e.g. VIP Trader Abdul / Member"
-                    className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-hidden"
-                  />
-                </div>
-
-                {/* Quick select from registered users */}
-                {registeredUsers.length > 0 && (
-                  <div className="pt-1 flex flex-wrap gap-1">
-                    {registeredUsers.slice(0, 4).map((u) => (
-                      <button
-                        key={u.uid}
-                        type="button"
-                        onClick={() => {
-                          setUserName(u.name || u.username || 'Member');
-                          if (u.phone) setUserPhone(u.phone);
-                        }}
-                        className="text-[10px] px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium"
-                      >
-                        +{u.name || u.username}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Phone / Contact */}
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-700 uppercase">
-                  ফোন / হোয়াটসঅ্যাপ (Optional Contact)
-                </label>
-                <input
-                  type="text"
-                  value={userPhone}
-                  onChange={(e) => setUserPhone(e.target.value)}
-                  placeholder="+8801XXXXXXXXX"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-hidden"
-                />
-              </div>
-
-              {/* Subscription Plan */}
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-700 uppercase">
-                  সাবস্ক্রিপশন প্ল্যান (Subscription Plan)
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSubscriptionType('premium')}
-                    className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                      subscriptionType === 'premium'
-                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white border-amber-600 shadow-xs'
-                        : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Crown className="w-3.5 h-3.5" />
-                    <span>VIP Premium</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSubscriptionType('free')}
-                    className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                      subscriptionType === 'free'
-                        ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                        : 'bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100'
-                    }`}
-                  >
-                    <span>Free / Trial</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Duration Days */}
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-slate-700 uppercase">
-                  মেয়াদ (Duration)
-                </label>
-                <select
-                  value={durationDays}
-                  onChange={(e) => setDurationDays(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-hidden cursor-pointer"
-                >
-                  <option value={7}>7 Days (1 Week)</option>
-                  <option value={15}>15 Days (Half Month)</option>
-                  <option value={30}>30 Days (1 Month - Standard)</option>
-                  <option value={90}>90 Days (3 Months VIP)</option>
-                  <option value={180}>180 Days (6 Months)</option>
-                  <option value={365}>365 Days (1 Year Full Access)</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Connected Game (Readonly Authoritative) */}
-            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <Gamepad2 className="w-4 h-4 text-rose-600" />
-                <span className="font-bold text-slate-800">Connected Game Engine:</span>
-                <span className="font-mono text-slate-600">Aviator Jet Core (Authoritative Game)</span>
-              </div>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                Direct Sync
-              </span>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-chakra font-black text-xs uppercase tracking-wider rounded-2xl shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-            >
-              {isSubmitting ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <Zap className="w-4 h-4" />
-              )}
-              <span>{lang === 'bn' ? 'প্রাইভেট সিগন্যাল লিঙ্ক জেনারেট করুন' : 'Generate & Copy Signal Access Link'}</span>
-            </button>
-          </form>
-        </div>
-
-        {/* Right 1 Column: Live Authoritative Game Telemetry */}
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 text-white shadow-xl flex flex-col justify-between space-y-4">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                <Activity className="w-4 h-4 text-rose-500" />
-                Live Round Verification
-              </h3>
-              <span className="text-[10px] text-emerald-400 font-mono">100% SHARED RNG</span>
-            </div>
-
-            <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800/80 space-y-3">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400">Current Round ID:</span>
-                <span className="font-mono font-bold text-white">{currentRound?.roundId || 'RD-LIVE'}</span>
-              </div>
-
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400">Game State:</span>
-                <span className={`font-black font-chakra px-2 py-0.5 rounded text-[10px] ${
-                  isLiveRunning 
-                    ? 'bg-rose-600 text-white animate-pulse' 
-                    : isLiveFinished 
-                    ? 'bg-amber-600 text-white' 
-                    : 'bg-emerald-600 text-white'
-                }`}>
-                  {currentRound?.status || 'WAITING'}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-400">Authoritative Multiplier:</span>
-                <span className="font-mono text-base font-black text-emerald-400">
-                  {currentRound?.predictedMultiplier ? `${currentRound.predictedMultiplier.toFixed(2)}x` : '--.--x'}
-                </span>
-              </div>
-            </div>
-
-            <div className="text-[11px] text-slate-400 leading-relaxed bg-slate-800/40 p-3 rounded-xl border border-slate-800">
-              💡 <strong>Authoritative Rule:</strong> Game engine creates the crash multiplier <em>before</em> the 5-second countdown. Both the Aviator Game and Signal App read this identical value from the server.
-            </div>
-          </div>
-
-          <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
-            <span>Latency: {connection?.pingMs || 18}ms</span>
-            <span className="text-emerald-400 font-bold">● Server Online</span>
-          </div>
-        </div>
-      </div>
-
-      {/* SECTION 4: ACTIVE & REGISTERED SIGNAL TOKENS LIST */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-          <div>
-            <h3 className="text-base font-black font-chakra text-slate-900 flex items-center gap-2">
-              <span>{lang === 'bn' ? 'সকল সিগন্যাল অ্যাক্সেস লিঙ্ক ও সদস্য' : 'Active Signal Access Directory'}</span>
-              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-bold">
-                {tokens.length}
-              </span>
-            </h3>
-            <p className="text-xs text-slate-500">
-              {lang === 'bn' ? 'সিগন্যাল লিঙ্ক কপি, সক্রিয়/নিষ্ক্রিয় ও মেয়াদ পরিবর্তন করুন।' : 'Manage access status, extend validity, or copy private player URLs.'}
-            </p>
-          </div>
-
-          {/* Search & Filter Controls */}
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search user or token..."
-                className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-hidden focus:bg-white focus:border-blue-600"
-              />
-            </div>
-
-            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs font-bold">
-              <button
-                onClick={() => setFilterStatus('all')}
-                className={`px-2.5 py-1 rounded-lg transition-all ${filterStatus === 'all' ? 'bg-white shadow-2xs text-slate-900' : 'text-slate-500'}`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setFilterStatus('active')}
-                className={`px-2.5 py-1 rounded-lg transition-all ${filterStatus === 'active' ? 'bg-white shadow-2xs text-emerald-600' : 'text-slate-500'}`}
-              >
-                Active
-              </button>
-              <button
-                onClick={() => setFilterStatus('revoked')}
-                className={`px-2.5 py-1 rounded-lg transition-all ${filterStatus === 'revoked' ? 'bg-white shadow-2xs text-rose-600' : 'text-slate-500'}`}
-              >
-                Revoked
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Tokens Table / Cards */}
-        {loading ? (
-          <div className="py-12 flex flex-col items-center justify-center text-slate-400 space-y-2">
-            <RefreshCw className="w-6 h-6 animate-spin text-blue-600" />
-            <span className="text-xs font-bold">Loading signal credentials...</span>
-          </div>
-        ) : filteredTokens.length === 0 ? (
-          <div className="py-12 text-center text-slate-400 space-y-2 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
-            <Radio className="w-8 h-8 text-slate-300 mx-auto" />
-            <p className="text-xs font-bold">No signal access links found</p>
-            <p className="text-[11px] text-slate-400">Generate a new access link above to get started.</p>
-          </div>
-        ) : (
-          <div className="space-y-2.5">
-            {filteredTokens.map((t) => {
-              const isExpired = new Date(t.expiresAt).getTime() < Date.now();
-              const daysLeft = Math.ceil((new Date(t.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-              const fullLink = `${window.location.origin}/#signal/${t.token}`;
-
-              return (
-                <div 
-                  key={t.token} 
-                  className={`p-4 rounded-2xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs ${
-                    t.status === 'revoked'
-                      ? 'bg-rose-50/40 border-rose-200'
-                      : isExpired
-                      ? 'bg-amber-50/40 border-amber-200'
-                      : 'bg-slate-50/80 border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  {/* Left Column: User Info & Token Details */}
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-black text-sm text-slate-900">{t.userName}</span>
-                      
-                      {/* Subscription Badge */}
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide border ${
-                        t.subscriptionType === 'premium'
-                          ? 'bg-amber-100 text-amber-800 border-amber-300'
-                          : 'bg-slate-200 text-slate-700 border-slate-300'
-                      }`}>
-                        {t.subscriptionType}
-                      </span>
-
-                      {/* Status Badge */}
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wide ${
-                        t.status === 'active' && !isExpired
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : t.status === 'revoked'
-                          ? 'bg-rose-100 text-rose-800'
-                          : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {t.status === 'revoked' ? 'Revoked' : isExpired ? 'Expired' : 'Active'}
-                      </span>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 font-mono">
-                      <span>Token: <strong className="text-slate-800">{t.token}</strong></span>
-                      <span>•</span>
-                      <span>
-                        {isExpired ? (
-                          <strong className="text-rose-600">Expired</strong>
-                        ) : (
-                          <strong className="text-emerald-700">{daysLeft} days left ({new Date(t.expiresAt).toLocaleDateString()})</strong>
-                        )}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Right Column: Actions (Copy, Toggle, Extend, Delete) */}
-                  <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                    {/* Copy Link Button */}
-                    <button
-                      onClick={() => handleCopyLink(t.token)}
-                      className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer ${
-                        copiedToken === t.token
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-blue-600 hover:bg-blue-700 text-white'
-                      }`}
-                      title="Copy customer's private Signal URL"
-                    >
-                      {copiedToken === t.token ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedToken === t.token ? 'Copied!' : 'Copy Link'}</span>
-                    </button>
-
-                    {/* Open in new tab */}
-                    <a
-                      href={fullLink}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl"
-                      title="Preview Signal App"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-
-                    {/* Toggle Active / Revoked */}
-                    <button
-                      onClick={() => handleToggleStatus(t)}
-                      className={`p-1.5 rounded-xl border transition-all cursor-pointer ${
-                        t.status === 'active'
-                          ? 'bg-rose-100 hover:bg-rose-200 text-rose-700 border-rose-300'
-                          : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700 border-emerald-300'
-                      }`}
-                      title={t.status === 'active' ? 'Revoke Access' : 'Activate Access'}
-                    >
-                      <Power className="w-3.5 h-3.5" />
-                    </button>
-
-                    {/* Toggle Premium / Free */}
-                    <button
-                      onClick={() => handleTogglePremium(t)}
-                      className={`p-1.5 rounded-xl border transition-all cursor-pointer ${
-                        t.subscriptionType === 'premium'
-                          ? 'bg-amber-100 hover:bg-amber-200 text-amber-800 border-amber-300'
-                          : 'bg-slate-200 hover:bg-slate-300 text-slate-700 border-slate-300'
-                      }`}
-                      title="Toggle Premium Status"
-                    >
-                      <Crown className="w-3.5 h-3.5" />
-                    </button>
-
-                    {/* Extend +30 Days */}
-                    <button
-                      onClick={() => handleExtendDays(t, 30)}
-                      className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl flex items-center gap-1 cursor-pointer"
-                      title="Extend validity +30 Days"
-                    >
-                      <Calendar className="w-3 h-3 text-blue-600" />
-                      <span>+30d</span>
-                    </button>
-
-                    {/* Delete Token */}
-                    <button
-                      onClick={() => handleDelete(t.token)}
-                      className="p-1.5 hover:bg-rose-100 text-slate-400 hover:text-rose-600 rounded-xl transition-all cursor-pointer"
-                      title="Delete credential"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* SECTION 5: AUTHORITATIVE SHARED ROUND HISTORY AUDIT LOG (LAST 20 ROUNDS) */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <span className="p-2 rounded-xl bg-purple-50 text-purple-600">
-              <HistoryIcon className="w-4 h-4" />
-            </span>
             <div>
-              <h3 className="text-base font-black font-chakra text-slate-900">
-                {lang === 'bn' ? 'অথরিটেটিভ গেম ও সিগন্যাল রাউন্ড হিস্ট্রি' : 'Authoritative Shared Round Audit Log (Last 20 Rounds)'}
-              </h3>
-              <p className="text-xs text-slate-500">
-                {lang === 'bn' ? 'গেম ও সিগন্যাল উভয়ের জন্য সংরক্ষিত রিয়েল-টাইম রাউন্ড অডিট ডাটা।' : 'Verified server records proving 100% identical data between Game and Signal App.'}
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight font-chakra">
+                  Game Connect → Aviator Signal
+                </h1>
+                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider flex items-center gap-1 ${
+                  isConnected 
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-300' 
+                    : 'bg-rose-50 text-rose-700 border border-rose-300'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500 animate-ping' : 'bg-rose-500'}`} />
+                  {isConnected ? 'CONNECTED' : 'DISCONNECTED'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {lang === 'bn' 
+                  ? 'একটি গেম ইঞ্জিন, একটি সেন্ট্রাল সিগন্যাল সার্ভিস, একটি শেয়ার্ড সিগন্যাল অ্যাপ — সব কাস্টমার একই রিয়েল-টাইম রাউন্ড ডাটা দেখতে পাবে।' 
+                  : 'One authoritative game server, one Signal Service, one shared Signal App — all customers receive identical live round data.'}
               </p>
             </div>
           </div>
         </div>
 
-        {roundHistory.length === 0 ? (
-          <p className="text-xs text-slate-400 py-4 text-center">No completed rounds recorded yet in this session.</p>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2">
-            {roundHistory.slice(0, 20).map((r, i) => {
-              const mult = r.finalMultiplier || r.currentMultiplier || 1.0;
-              const isHigh = mult >= 2.0;
-              const isHuge = mult >= 10.0;
+        {/* Global Quick Action Buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={handleTestConnection}
+            disabled={isTestingConn}
+            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold font-chakra flex items-center gap-1.5 transition-colors active:scale-95 disabled:opacity-60"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isTestingConn ? 'animate-spin' : ''}`} />
+            <span>{isTestingConn ? (lang === 'bn' ? 'টেস্ট চলছে...' : 'Testing...') : (lang === 'bn' ? 'টেস্ট কানেকশন' : 'Test Connection')}</span>
+          </button>
 
-              return (
-                <div 
-                  key={r.id || r.roundId || i}
-                  className={`p-2.5 rounded-xl border flex flex-col items-center justify-center text-center space-y-1 ${
-                    isHuge 
-                      ? 'bg-amber-50 border-amber-300 text-amber-900' 
-                      : isHigh 
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-900' 
-                      : 'bg-slate-50 border-slate-200 text-slate-800'
+          <button
+            onClick={handleToggleGameConnection}
+            className={`px-3.5 py-2 rounded-xl text-xs font-black font-chakra flex items-center gap-1.5 transition-all active:scale-95 ${
+              isConnected 
+                ? 'bg-rose-100 hover:bg-rose-200 text-rose-700 border border-rose-300' 
+                : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-xs'
+            }`}
+          >
+            <Power className="w-3.5 h-3.5" />
+            <span>{isConnected ? (lang === 'bn' ? 'ডিসকানেক্ট গেম' : 'Disconnect Game') : (lang === 'bn' ? 'কানেক্ট গেম' : 'Connect Game')}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Grid: Signal App URL Section (Primary) + Game Connection Status */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        {/* LEFT / TOP: 1. SINGLE SIGNAL APP URL CONTROLS */}
+        <div className="lg:col-span-7 space-y-6">
+          
+          <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-slate-800">
+                <LinkIcon className="w-5 h-5 text-red-600" />
+                <h2 className="text-base font-black font-chakra">
+                  {lang === 'bn' ? 'সিগন্যাল অ্যাপ লিংক (Signal App URL)' : 'Signal App URL'}
+                </h2>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[11px] font-bold">
+                <Share2 className="w-3.5 h-3.5 text-blue-600" />
+                <span>Single Shared URL</span>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                {lang === 'bn' ? 'পাবলিক সিগন্যাল অ্যাপ URL' : 'Public Signal App URL'}
+              </label>
+              
+              <div className="flex flex-col sm:flex-row items-stretch gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    value={signalAppUrl}
+                    onChange={(e) => setSignalAppUrl(e.target.value)}
+                    placeholder="https://yourwebsite.com/signal"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 font-bold"
+                  />
+                </div>
+                <button
+                  onClick={handleSaveSignalUrl}
+                  disabled={isSavingUrl}
+                  className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-chakra text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-all active:scale-95 disabled:opacity-60"
+                >
+                  <Save className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>{isSavingUrl ? (lang === 'bn' ? 'সংরক্ষণ...' : 'Saving...') : (lang === 'bn' ? 'সংরক্ষণ (SAVE)' : 'SAVE')}</span>
+                </button>
+              </div>
+
+              {/* Action Buttons: COPY SIGNAL LINK & OPEN SIGNAL APP */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                <button
+                  onClick={handleCopySignalLink}
+                  className={`w-full py-3 px-4 rounded-xl font-chakra text-xs font-black flex items-center justify-center gap-2 transition-all active:scale-95 border ${
+                    copiedLink 
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' 
+                      : 'bg-red-600 hover:bg-red-700 text-white border-red-600 shadow-md shadow-red-600/20'
                   }`}
                 >
-                  <span className="text-[10px] font-mono text-slate-400">{r.roundId || `#${i + 1}`}</span>
-                  <span className="text-base font-black font-chakra">
-                    {mult.toFixed(2)}x
-                  </span>
-                  <span className="text-[9px] font-bold text-emerald-600 flex items-center gap-0.5">
-                    <ShieldCheck className="w-2.5 h-2.5" /> Verified
-                  </span>
+                  {copiedLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  <span>{copiedLink ? (lang === 'bn' ? 'কপি সফল হয়েছে!' : 'COPIED TO CLIPBOARD!') : (lang === 'bn' ? 'কপি সিগন্যাল লিংক (COPY LINK)' : 'COPY SIGNAL LINK')}</span>
+                </button>
+
+                <button
+                  onClick={handleOpenSignalApp}
+                  className="w-full py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-chakra text-xs font-black flex items-center justify-center gap-2 transition-all active:scale-95"
+                >
+                  <ExternalLink className="w-4 h-4 text-slate-600" />
+                  <span>{lang === 'bn' ? 'সিগন্যাল অ্যাপ ওপেন করুন' : 'OPEN SIGNAL APP'}</span>
+                </button>
+              </div>
+
+              {/* Information Notice */}
+              <div className="p-3.5 rounded-xl bg-blue-50/80 border border-blue-200 text-blue-900 text-xs leading-relaxed space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-blue-950">
+                  <ShieldCheck className="w-4 h-4 text-blue-600 shrink-0" />
+                  <span>{lang === 'bn' ? 'একক লিংক নীতিমালা (One Shared Signal)' : 'Single Shared Signal Policy'}</span>
                 </div>
-              );
-            })}
+                <p className="text-blue-800 text-[11px]">
+                  {lang === 'bn' 
+                    ? 'এডমিন এই একটি লিংক কপি করে যেকোনো সংখ্যক কাস্টমারকে পাঠাতে পারবেন। কোনো কাস্টমার-ভিত্তিক আলাদা লিংক বা টোকেনের প্রয়োজন নেই। যারা এই লিংকে ঢুকবে সবাই একই সময়ে মূল Aviator গেমের লাইভ রাউন্ড এবং ভেরিফাইড সিগন্যাল দেখতে পাবে।'
+                    : 'The admin can copy this ONE link and send it to any number of customers. No customer-specific links, tokens, or names required. Everyone who opens this Signal App sees the SAME current round information from the SAME Aviator game.'}
+                </p>
+              </div>
+            </div>
           </div>
-        )}
+
+          {/* 2. GAME CONNECTION CONFIGURATION */}
+          <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-slate-800">
+                <Gamepad2 className="w-5 h-5 text-slate-700" />
+                <h2 className="text-base font-black font-chakra">
+                  {lang === 'bn' ? 'গেম কানেকশন কনফিগারেশন' : 'Game Connection Configuration'}
+                </h2>
+              </div>
+              <span className="text-xs font-mono font-bold text-slate-500">
+                {connection?.currentSessionId || 'sess_core_live'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-500 uppercase">
+                  Game Name
+                </label>
+                <input
+                  type="text"
+                  value={gameName}
+                  onChange={(e) => setGameName(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-slate-500"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-500 uppercase">
+                  Game ID
+                </label>
+                <input
+                  type="text"
+                  value={gameId}
+                  onChange={(e) => setGameId(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 focus:outline-none focus:border-slate-500"
+                />
+              </div>
+            </div>
+
+            {/* Status Summary List */}
+            <div className="divide-y divide-slate-100 text-xs">
+              <div className="py-2.5 flex items-center justify-between">
+                <span className="font-bold text-slate-600">Game Connection</span>
+                <span className={`font-black uppercase flex items-center gap-1.5 ${isConnected ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                  {isConnected ? 'CONNECTED' : 'DISCONNECTED'}
+                </span>
+              </div>
+
+              <div className="py-2.5 flex items-center justify-between">
+                <span className="font-bold text-slate-600">Signal App</span>
+                <span className={`font-black uppercase flex items-center gap-1.5 ${isSignalAppConnected ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  <span className={`w-2 h-2 rounded-full ${isSignalAppConnected ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                  {isSignalAppConnected ? 'CONNECTED' : 'DISCONNECTED'}
+                </span>
+              </div>
+
+              <div className="py-2.5 flex items-center justify-between">
+                <span className="font-bold text-slate-600">Last Sync</span>
+                <span className="font-mono text-slate-500 font-bold">
+                  {connection?.lastSyncAt ? new Date(connection.lastSyncAt).toLocaleTimeString() : 'Active in real-time'}
+                </span>
+              </div>
+
+              <div className="py-2.5 flex items-center justify-between">
+                <span className="font-bold text-slate-600">Server Ping / Latency</span>
+                <span className="font-mono text-slate-700 font-black">
+                  {pingResult ? `${pingResult} ms` : '18 ms'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* RIGHT / BOTTOM: LIVE AUTHORITATIVE SERVER TELEMETRY & ROUND AUDIT */}
+        <div className="lg:col-span-5 space-y-6">
+          
+          {/* CURRENT LIVE ROUND MONITOR */}
+          <div className="bg-slate-900 text-white rounded-2xl p-5 sm:p-6 border border-slate-800 shadow-xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-emerald-400 animate-pulse" />
+                <h3 className="text-xs font-black tracking-widest text-slate-300 uppercase font-chakra">
+                  Live Authoritative Engine Stream
+                </h3>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-[10px] font-black text-emerald-400 font-mono">
+                SINGLE SOURCE OF TRUTH
+              </span>
+            </div>
+
+            {/* Live Round Box */}
+            <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 text-center space-y-2">
+              <div className="text-[11px] font-black text-slate-400 uppercase tracking-wider">
+                {currentRound?.status === 'ROUND_RUNNING' ? 'CURRENT LIVE FLIGHT' : 'UPCOMING ROUND PRE-SIGNAL'}
+              </div>
+
+              <div className="text-5xl font-black font-mono tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white via-slate-100 to-slate-300">
+                {currentRound?.status === 'ROUND_RUNNING' 
+                  ? `${currentRound.currentMultiplier.toFixed(2)}x`
+                  : currentRound?.predictedMultiplier 
+                    ? `${currentRound.predictedMultiplier.toFixed(2)}x` 
+                    : '--.--x'}
+              </div>
+
+              <div className="flex items-center justify-center gap-2 pt-1">
+                <span className="text-xs font-mono text-slate-300 font-bold">
+                  {currentRound?.roundId || 'ROUND #RD-LIVE'}
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-emerald-900/60 text-emerald-300 text-[10px] font-bold border border-emerald-700/40">
+                  ● SERVER VERIFIED
+                </span>
+              </div>
+            </div>
+
+            {/* Metadata breakdown */}
+            <div className="space-y-2 text-xs font-mono">
+              <div className="flex justify-between text-slate-400">
+                <span>Engine Status:</span>
+                <span className="text-emerald-400 font-bold">{currentRound?.status || 'WAITING_FOR_ROUND'}</span>
+              </div>
+              <div className="flex justify-between text-slate-400">
+                <span>Server Signature:</span>
+                <span className="text-slate-300 font-bold truncate max-w-[170px]">
+                  {currentRound?.serverSignature || 'sig_sha256_auth_verified'}
+                </span>
+              </div>
+              <div className="flex justify-between text-slate-400">
+                <span>Synchronized Clients:</span>
+                <span className="text-slate-200 font-bold">ALL GLOBAL CUSTOMERS</span>
+              </div>
+            </div>
+          </div>
+
+          {/* RECENT 20 COMPLETED ROUNDS AUDIT */}
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <HistoryIcon className="w-4 h-4 text-slate-600" />
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 font-chakra">
+                  Shared Game History (Latest 20)
+                </h3>
+              </div>
+              <span className="text-[11px] font-bold text-slate-400">
+                {roundHistory.length} Rounds
+              </span>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
+              {roundHistory.map((item, idx) => {
+                const mult = item.finalMultiplier || item.currentMultiplier || 1.0;
+                const isHigh = mult >= 10;
+                const isMed = mult >= 2;
+                return (
+                  <div
+                    key={item.id || idx}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold border transition-colors ${
+                      isHigh
+                        ? 'bg-purple-50 text-purple-700 border-purple-200'
+                        : isMed
+                        ? 'bg-blue-50 text-blue-700 border-blue-200'
+                        : 'bg-slate-50 text-slate-600 border-slate-200'
+                    }`}
+                  >
+                    {mult.toFixed(2)}x
+                  </div>
+                );
+              })}
+              {roundHistory.length === 0 && (
+                <div className="text-center w-full py-4 text-xs text-slate-400 font-medium">
+                  {lang === 'bn' ? 'কোনো পূর্ববর্তী রাউন্ড নেই।' : 'No completed rounds yet.'}
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
+
       </div>
     </div>
   );

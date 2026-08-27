@@ -81,22 +81,10 @@ export default function App() {
 
       if (path === 'admin' || path === 'admin/dashboard' || path === 'admin-dashboard' || hash === 'admin' || isQueryAdmin) {
         setCurrentPage('admin');
-      } else if (path === 'signal-cms' || hash === 'signal-cms' || path === 'signal-admin' || hash === 'signal-admin') {
-        setCurrentPage('aviator-signal-cms');
-      } else if (path.startsWith('signal') || hash.startsWith('signal') || searchParams.has('signal') || searchParams.has('token')) {
-        let tok = searchParams.get('token') || searchParams.get('signal') || '';
-        if (!tok) {
-          const pathParts = path.split('/');
-          if (pathParts[0] === 'signal' && pathParts[1]) {
-            tok = pathParts[1];
-          }
-          const hashParts = hash.split('/');
-          if (hashParts[0] === 'signal' && hashParts[1]) {
-            tok = hashParts[1];
-          }
-        }
-        if (tok) setSignalToken(tok);
+      } else if (path === 'signal' || hash === 'signal' || path.startsWith('signal') || hash.startsWith('signal') || searchParams.has('signal')) {
         setCurrentPage('aviator-signal');
+      } else if (path === 'signal-cms' || hash === 'signal-cms' || path === 'signal-admin' || hash === 'signal-admin') {
+        setCurrentPage('admin');
       } else if (path === 'admin/login' || path === 'admin-login' || hash === 'admin-login') {
         setCurrentPage('admin-login');
       } else if (path === 'promotion' || path === 'promotions' || hash === 'promotion') {
@@ -247,9 +235,8 @@ export default function App() {
     return (
       <div className="fixed inset-0 z-[100] bg-black overflow-y-auto">
         <AviatorSignalApp
-          initialToken={signalToken}
           onOpenAviatorGame={() => handleNavigate('aviator-jet')}
-          onOpenCMS={() => handleNavigate('aviator-signal-cms')}
+          onOpenCMS={() => handleNavigate('admin')}
         />
       </div>
     );
@@ -260,8 +247,7 @@ export default function App() {
       <div className="fixed inset-0 z-[100] bg-black overflow-y-auto">
         <AviatorSignalCMS
           onBackToGame={() => handleNavigate('aviator-jet')}
-          onOpenSignalApp={(tok) => {
-            if (tok) setSignalToken(tok);
+          onOpenSignalApp={() => {
             handleNavigate('aviator-signal');
           }}
         />

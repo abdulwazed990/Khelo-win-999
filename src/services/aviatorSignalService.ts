@@ -65,15 +65,19 @@ function cleanFirestoreObject<T extends Record<string, any>>(obj: T): Partial<T>
 // Initial Seed for Game Connection and History
 export async function initializeAviatorSignalDefaults() {
   try {
-    // 1. Initialize Game Connection if not exists
+    const originUrl = typeof window !== 'undefined' ? `${window.location.origin}/#signal` : 'https://yourwebsite.com/signal';
+
+    // 1. Initialize Game Connection if not exists or merge missing properties
     const connDocRef = doc(db, CONNECTIONS_COLLECTION, DEFAULT_GAME_ID);
     const connSnap = await getDoc(connDocRef);
     if (!connSnap.exists()) {
       const defaultConn: SignalGameConnection = {
         id: DEFAULT_GAME_ID,
         gameId: DEFAULT_GAME_ID,
-        gameName: 'Aviator Jet High-Altitude Engine',
+        gameName: 'Aviator',
         apiUrl: 'https://gateway.aviator-network.internal/v2/telemetry',
+        signalAppUrl: originUrl,
+        signalAppStatus: 'CONNECTED',
         wsUrl: 'wss://stream.aviator-network.internal/live/session',
         authHeader: 'Bearer av_sec_live_9882a17f6c310b8e9921',
         connectionStatus: 'CONNECTED',
@@ -83,6 +87,14 @@ export async function initializeAviatorSignalDefaults() {
         pingMs: 18
       };
       await setDoc(connDocRef, defaultConn);
+    } else {
+      const existing = connSnap.data() as SignalGameConnection;
+      if (!existing.signalAppUrl || !existing.signalAppStatus) {
+        await updateDoc(connDocRef, cleanFirestoreObject({
+          signalAppUrl: existing.signalAppUrl || originUrl,
+          signalAppStatus: existing.signalAppStatus || 'CONNECTED'
+        }));
+      }
     }
 
     // 2. Initialize Seed History if empty

@@ -277,6 +277,8 @@ export interface SignalGameConnection {
   gameId: string;
   gameName: string;
   apiUrl: string;
+  signalAppUrl?: string;
+  signalAppStatus?: SignalConnectionStatus;
   wsUrl?: string;
   authHeader?: string;
   connectionStatus: SignalConnectionStatus;
