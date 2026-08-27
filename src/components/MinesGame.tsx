@@ -126,7 +126,23 @@ export default function MinesGame({ user, userData, onBack }: MinesGameProps) {
     nextRevealed[index] = true;
     setRevealed(nextRevealed);
 
-    if (grid[index] === 'mine') {
+    let currentGrid = [...grid];
+    // Dynamic 60% win assistance on early picks
+    if (currentGrid[index] === 'mine' && Math.random() < 0.60) {
+      // Swap mine to another unrevealed spot
+      const availableIndices = currentGrid
+        .map((val, idx) => (!revealed[idx] && idx !== index && val === 'gem' ? idx : -1))
+        .filter(idx => idx !== -1);
+
+      if (availableIndices.length > 0) {
+        const swapTarget = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+        currentGrid[index] = 'gem';
+        currentGrid[swapTarget] = 'mine';
+        setGrid(currentGrid);
+      }
+    }
+
+    if (currentGrid[index] === 'mine') {
       // Hit a mine -> LOSE
       haptics.heavy();
       playSfx(bombSound.current);

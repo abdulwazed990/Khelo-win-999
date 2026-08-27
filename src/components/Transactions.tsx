@@ -30,9 +30,8 @@ interface TransactionsProps {
 }
 
 const DEFAULT_LOGOS: Record<string, string> = {
-  bkash: 'https://images.seeklogo.com/logo-png/39/2/bkash-logo-png_seeklogo-395874.png',
-  nagad: 'https://images.seeklogo.com/logo-png/35/1/nagad-logo-png_seeklogo-355240.png',
-  rocket: 'https://static.vecteezy.com/system/resources/thumbnails/068/706/013/small_2x/rocket-color-logo-mobile-banking-icon-free-png.png',
+  bkash: 'https://download.logo.wine/logo/BKash/BKash-Logo.wine.png',
+  nagad: 'https://download.logo.wine/logo/Nagad/Nagad-Logo.wine.png',
   upay: 'https://play-lh.googleusercontent.com/j4q49Uq8eN2kH89VbM_z21Z6i6A1G5Qv3_f2T4y_b4q4'
 };
 
@@ -41,7 +40,7 @@ const PRESET_AMOUNTS = [500, 1000, 2000, 5000, 10000, 15000, 20000, 30000];
 export default function Transactions({ userData, user }: TransactionsProps) {
   const { lang, t } = useLanguage();
   const [tab, setTab] = useState<'deposit' | 'withdraw'>('deposit');
-  const [method, setMethod] = useState<string>('nagad');
+  const [method, setMethod] = useState<string>('bkash');
   const [amount, setAmount] = useState('');
   const [senderNumber, setSenderNumber] = useState('');
   const [transactionId, setTransactionId] = useState('');
@@ -71,7 +70,7 @@ export default function Transactions({ userData, user }: TransactionsProps) {
       if (!snapshot.empty) {
         const list: PaymentMethodConfig[] = [];
         snapshot.forEach((d) => list.push({ id: d.id, ...d.data() } as PaymentMethodConfig));
-        const activeList = list.filter(m => m.status === 'active');
+        const activeList = list.filter(m => m.status === 'active' && m.methodId !== 'rocket');
         if (activeList.length > 0) {
           setCustomPaymentMethods(activeList);
         }
@@ -85,12 +84,8 @@ export default function Transactions({ userData, user }: TransactionsProps) {
 
   const activeNumber = activeMethodObj?.accountNumber || (
     method === 'nagad' 
-      ? (settings?.depositNagadNumber || '01340772478')
-      : method === 'bkash'
-      ? (settings?.depositBkashNumber || '01712345678')
-      : method === 'upay'
-      ? (settings?.depositUpayNumber || '01812345678')
-      : (settings?.depositRocketNumber || '01912345678')
+      ? (settings?.depositNagadNumber || '01641404837')
+      : (settings?.depositBkashNumber || '01641404837')
   );
 
   const copyNumber = () => {
@@ -177,16 +172,9 @@ export default function Transactions({ userData, user }: TransactionsProps) {
     setError('');
 
     try {
-      if (!userData.bonusReturned) {
-        await updateDoc(doc(db, 'users', userData.uid), {
-          balance: increment(-(withdrawAmount + 888)),
-          bonusReturned: true
-        });
-      } else {
-        await updateDoc(doc(db, 'users', userData.uid), {
-          balance: increment(-withdrawAmount)
-        });
-      }
+      await updateDoc(doc(db, 'users', userData.uid), {
+        balance: increment(-withdrawAmount)
+      });
 
       await addDoc(collection(db, 'transactions'), {
         uid: userData.uid,
@@ -241,13 +229,17 @@ export default function Transactions({ userData, user }: TransactionsProps) {
     );
   }
 
-  // Available display methods
-  const methodsToDisplay = customPaymentMethods.length > 0
-    ? customPaymentMethods
+  // Available display methods (bKash & Nagad only)
+  const methodsToDisplay = (customPaymentMethods.length > 0
+    ? customPaymentMethods.filter(m => m.methodId !== 'rocket')
+    : []
+  );
+
+  const finalMethods = methodsToDisplay.length > 0
+    ? methodsToDisplay
     : [
         { id: '1', methodId: 'bkash', name: 'bKash', nameBn: 'বিকাশ', iconUrl: DEFAULT_LOGOS.bkash, status: 'active' as const, sortOrder: 1 },
         { id: '2', methodId: 'nagad', name: 'Nagad', nameBn: 'নগদ', iconUrl: DEFAULT_LOGOS.nagad, status: 'active' as const, sortOrder: 2 },
-        { id: '3', methodId: 'rocket', name: 'Rocket', nameBn: 'রকেট', iconUrl: DEFAULT_LOGOS.rocket, status: 'active' as const, sortOrder: 3 },
       ];
 
   return (
@@ -294,10 +286,10 @@ export default function Transactions({ userData, user }: TransactionsProps) {
             {lang === 'bn' ? 'পেমেন্ট মেথড নির্বাচন করুন:' : 'Select Payment Method:'}
           </label>
           
-          <div className="grid grid-cols-3 gap-2.5">
-            {methodsToDisplay.map((m, idx) => {
+          <div className="grid grid-cols-2 gap-3.5 sm:gap-4">
+            {finalMethods.map((m, idx) => {
               const isSelected = method === m.methodId;
-              const logoSrc = m.iconUrl || DEFAULT_LOGOS[m.methodId] || DEFAULT_LOGOS.nagad;
+              const logoSrc = m.iconUrl || DEFAULT_LOGOS[m.methodId] || DEFAULT_LOGOS.bkash;
               const displayName = lang === 'bn' && m.nameBn ? m.nameBn : m.name;
 
               return (
@@ -308,26 +300,34 @@ export default function Transactions({ userData, user }: TransactionsProps) {
                     haptics.selection();
                     setMethod(m.methodId);
                   }}
-                  className={`p-3 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-1.5 relative ${
+                  className={`p-4 sm:p-5 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-2.5 relative ${
                     isSelected 
-                      ? 'border-blue-600 bg-blue-50/70 shadow-md scale-[1.02]' 
-                      : 'border-slate-200 bg-slate-50/60 hover:bg-slate-100 hover:border-slate-300'
+                      ? 'border-blue-600 bg-blue-50/90 shadow-md ring-2 ring-blue-500/20 scale-[1.02]' 
+                      : 'border-slate-200 bg-slate-50/90 hover:bg-slate-100 hover:border-slate-300'
                   }`}
                 >
-                  <div className="h-8 flex items-center justify-center">
+                  <div className="h-16 sm:h-20 w-full flex items-center justify-center p-2 bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
                     <img 
                       src={logoSrc} 
                       alt={displayName} 
-                      className="max-h-7 max-w-full object-contain filter drop-shadow-sm" 
+                      className="max-h-14 sm:max-h-16 w-auto max-w-[150px] object-contain transition-transform duration-200" 
                       referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        if (m.methodId === 'bkash') {
+                          target.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/77/BKash_logo.png/320px-BKash_logo.png';
+                        } else {
+                          target.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/42/Nagad_Logo.svg/320px-Nagad_Logo.svg.png';
+                        }
+                      }}
                     />
                   </div>
-                  <span className={`text-[11px] font-chakra font-black uppercase tracking-wider ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>
+                  <span className={`text-xs sm:text-sm font-chakra font-black uppercase tracking-wider ${isSelected ? 'text-blue-700 font-extrabold' : 'text-slate-700 font-bold'}`}>
                     {displayName}
                   </span>
                   {isSelected && (
-                    <div className="absolute top-1.5 right-1.5 bg-blue-600 text-white rounded-full p-0.5 shadow-sm">
-                      <CheckCircle2 size={11} />
+                    <div className="absolute top-2.5 right-2.5 bg-blue-600 text-white rounded-full p-1 shadow-sm">
+                      <CheckCircle2 size={15} />
                     </div>
                   )}
                 </button>

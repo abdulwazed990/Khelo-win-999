@@ -487,6 +487,7 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
 
     return () => {
       bgmManagerRef.current?.stop();
+      WebAudioManager.stopAllSounds();
       window.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleBlur);
       window.removeEventListener('focus', handleFocus);
@@ -1092,17 +1093,14 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       let forceType: 'none' | 'small' | 'scatter' | 'big_fs' = 'none';
       
       if (isFS) {
-        // Free spin logic: More frequent medium wins, rare massive wins
-        if (outcomeRand < 0.05) forceType = 'big_fs';
-        else if (outcomeRand < 0.3) forceType = 'small';
+        // Free spin logic: 40%+ winning spins in bonus rounds
+        if (outcomeRand < 0.10) forceType = 'big_fs';
+        else if (outcomeRand < 0.45) forceType = 'small';
       } else {
-        // Normal spin logic
-        // 1. Scatter trigger (Free Spins)
-        const scatterChance = sessionStats.spinsSinceLastBigWin > 40 ? 0.05 : 0.015;
+        // Normal spin logic: exactly 40% overall winning spin rate
+        const scatterChance = sessionStats.spinsSinceLastBigWin > 25 ? 0.04 : 0.02;
         if (outcomeRand < scatterChance && !hasHadFreeSpins) forceType = 'scatter';
-        // 2. Small/Medium wins
-        else if (outcomeRand < 0.25) forceType = 'small';
-        // 3. Dead spins (frequent)
+        else if (outcomeRand < 0.40) forceType = 'small';
         else forceType = 'none';
       }
 
@@ -1302,6 +1300,12 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
     }
   }, [freeSpins, isProcessing, isFreeSpinMode, totalFreeSpinWin, showFreeSpinResult, handleCollectFreeSpinWin]);
 
+  const handleExitGame = () => {
+    bgmManagerRef.current?.stop();
+    WebAudioManager.stopAllSounds();
+    onBack();
+  };
+
   return (
     <div 
       className="h-screen max-h-screen flex flex-col items-center text-white font-sans select-none overflow-hidden safe-area-inset-bottom"
@@ -1320,7 +1324,7 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       
       {/* Top Bar */}
       <div className="w-full max-w-md flex justify-between items-center p-3 z-20">
-        <button onClick={onBack} className="p-2 bg-black/40 rounded-full border border-white/10">
+        <button onClick={handleExitGame} className="p-2 bg-black/40 rounded-full border border-white/10">
           <X className="w-5 h-5 text-white" />
         </button>
         

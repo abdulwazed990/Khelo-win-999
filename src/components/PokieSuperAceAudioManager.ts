@@ -117,6 +117,18 @@ export class WebAudioManager {
     }
   }
 
+  // Static helper to stop all audio immediately on component unmount / exit
+  static stopAllSounds() {
+    try {
+      const context = this.sharedContext;
+      if (context && context.state !== 'closed') {
+        context.suspend().catch(() => {});
+      }
+    } catch (e) {
+      console.warn('Audio stop all failed:', e);
+    }
+  }
+
   private static bufferCache: Map<string, AudioBuffer> = new Map();
 
   // Static helper for one-shot sound effects

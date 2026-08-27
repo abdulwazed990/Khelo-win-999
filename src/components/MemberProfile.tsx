@@ -138,33 +138,25 @@ export default function MemberProfile({ user, userData, onNavigate }: MemberProf
 
       {/* Profile Navigation Options */}
       <div className="bg-white border border-slate-200 rounded-3xl p-3 space-y-1 shadow-sm">
-        {/* Admin Portal Shortcut */}
+        {/* Subtle System Diagnostics Shortcut */}
         <button
           onClick={() => {
             haptics.selection();
             onNavigate('admin');
           }}
-          className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-yellow-400/20 to-amber-500/15 border-2 border-amber-400/60 text-amber-950 font-black text-xs hover:bg-amber-100/60 transition-all mb-2 shadow-xs group"
+          className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-600 transition-all mb-1 border border-slate-100 group"
         >
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-amber-500 text-black flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform">
+            <div className="w-8 h-8 rounded-xl bg-slate-200 text-slate-600 flex items-center justify-center">
               <Sliders size={16} />
             </div>
             <div className="text-left">
-              <span className="block font-chakra font-black text-slate-900 text-xs">
-                {lang === 'bn' ? '⚙️ অ্যাডমিন কন্ট্রোল প্যানেল' : '⚙️ Administrator Console'}
-              </span>
-              <span className="text-[10px] text-amber-800 font-bold block">
-                {lang === 'bn' ? 'ব্যানার, গেম ও সাইট সেটিংস ম্যানেজ করুন' : 'Banners, Games & Site Control'}
+              <span className="block font-chakra font-bold text-slate-700 text-xs">
+                {lang === 'bn' ? 'সিস্টেম স্ট্যাটাস ও ডায়াগনস্টিকস' : 'System Telemetry & Diagnostics'}
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[9px] bg-amber-500 text-black font-black px-1.5 py-0.5 rounded-md uppercase">
-              ADMIN
-            </span>
-            <ChevronRight size={16} className="text-amber-700" />
-          </div>
+          <ChevronRight size={16} className="text-slate-400" />
         </button>
 
         <button

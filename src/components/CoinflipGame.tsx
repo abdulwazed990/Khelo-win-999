@@ -73,8 +73,9 @@ export default function CoinflipGame({ user, userData, onBack }: CoinflipGamePro
       setResult(null);
       playSfx(flipSound.current);
 
-      // Random outcome (50/50 with 96% RTP payout of 1.96x)
-      const outcome: 'heads' | 'tails' = Math.random() > 0.5 ? 'heads' : 'tails';
+      // Outcome with 60% win probability
+      const isWin = Math.random() < 0.60;
+      const outcome: 'heads' | 'tails' = isWin ? selectedSide : (selectedSide === 'heads' ? 'tails' : 'heads');
       const won = outcome === selectedSide;
 
       // Animate rotation (at least 5 full 360 flips + side orientation)

@@ -30,7 +30,6 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
   const [history, setHistory] = useState([1.24, 4.56, 1.02, 12.45, 2.33, 1.88, 5.4]);
   const [cashoutPopup, setCashoutPopup] = useState<{amount: number, mult: number} | null>(null);
   const [shake, setShake] = useState(false);
-  const [flash, setFlash] = useState(false);
   const [pulse, setPulse] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
@@ -167,7 +166,14 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
 
   const currentRoundIdRef = useRef(generateRoundId());
 
-  const generateCrashMult = () => Math.random() < 0.05 ? 1 : parseFloat((1 / (1 - Math.random() * 0.99)).toFixed(2));
+  const generateCrashMult = () => {
+    // 60% comfortable win flights (>= 2.1x to 15.0x)
+    const isWin = Math.random() < 0.60;
+    if (isWin) {
+      return parseFloat((2.1 + Math.random() * 8.5).toFixed(2));
+    }
+    return parseFloat((1.15 + Math.random() * 0.75).toFixed(2));
+  };
 
   // Subscribe to real-time round history from database
   useEffect(() => {
@@ -290,7 +296,6 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
           setMultiplier(crashMultRef.current);
           setHistory(it => [parseFloat(crashMultRef.current.toFixed(2)), ...it].slice(0, 15));
           setShake(true);
-          setFlash(true);
           haptics.heavy();
 
           // Broadcast authoritative crash result
@@ -307,7 +312,6 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
           }).catch(() => {});
 
           setTimeout(() => setShake(false), 500);
-          setTimeout(() => setFlash(false), 200);
           setTimeout(resetGame, 3000);
           return;
         }
@@ -406,6 +410,8 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
     const render = () => {
       const it = b.width;
       const Mt = b.height;
+      
+      // Crisp sky gradient background
       const _t = A.createLinearGradient(0, 0, 0, Mt);
       _t.addColorStop(0, "#0ea5e9");
       _t.addColorStop(1, "#38bdf8");
@@ -413,11 +419,8 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
       A.fillRect(0, 0, it, Mt);
 
       A.save();
-      if (shake) A.translate((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10);
-      
-      if (flash) {
-        A.fillStyle = "rgba(255, 255, 255, 0.8)";
-        A.fillRect(0, 0, it, Mt);
+      if (shake) {
+        A.translate((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8);
       }
 
       starsRef.current.forEach(Tt => {
@@ -435,7 +438,7 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
         offsetRef.current = (offsetRef.current + 2 * multiplier) % 50;
       }
 
-      A.strokeStyle = "rgba(255, 255, 255, 0.05)";
+      A.strokeStyle = "rgba(255, 255, 255, 0.08)";
       A.lineWidth = 1;
       for (let Tt = -offsetRef.current; Tt < it + 50; Tt += 50) {
         A.beginPath(); A.moveTo(Tt, 0); A.lineTo(Tt, Mt); A.stroke();
@@ -465,7 +468,7 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
 
         if (X.length > 1) {
           A.beginPath();
-          A.strokeStyle = "rgba(225, 29, 72, 0.3)";
+          A.strokeStyle = "rgba(225, 29, 72, 0.4)";
           A.lineWidth = 3;
           A.moveTo(X[0].x, X[0].y);
           for (let bt = 1; bt < X.length; bt++) A.lineTo(X[bt].x, X[bt].y);
@@ -480,18 +483,15 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
           const on = Pe - Math.sin(bt) * 50;
           particlesRef.current.push({ x: Kt, y: on, size: 2 + Math.random() * 4, life: 1, type: "exhaust" });
         } else if (gameState === "CRASHED" && (Date.now() - crashTimeRef.current) / 1000 < 1.5) {
-          for (let Kt = 0; Kt < 15; Kt++) {
-            particlesRef.current.push({ x: Fe + (Math.random() - 0.5) * 60, y: Pe + (Math.random() - 0.5) * 60, size: 10 + Math.random() * 20, life: 1, type: Math.random() > 0.4 ? "fire" : "smoke" });
-          }
           for (let Kt = 0; Kt < 8; Kt++) {
-            particlesRef.current.push({ x: Fe, y: Pe, size: 2 + Math.random() * 4, life: 1.5, type: "fire" });
+            particlesRef.current.push({ x: Fe + (Math.random() - 0.5) * 40, y: Pe + (Math.random() - 0.5) * 40, size: 6 + Math.random() * 14, life: 1, type: Math.random() > 0.4 ? "fire" : "smoke" });
           }
         }
 
         particlesRef.current.forEach((bt, Kt) => {
           if (bt.type === "exhaust") A.fillStyle = `rgba(255, 255, 255, ${bt.life * 0.4})`;
           else if (bt.type === "fire") {
-            A.shadowBlur = 15;
+            A.shadowBlur = 12;
             A.shadowColor = "rgba(249, 115, 22, 0.8)";
             A.fillStyle = `rgba(249, 115, 22, ${bt.life})`;
           } else {
@@ -507,66 +507,66 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
           if (bt.type === "exhaust") {
             bt.x -= 2 * multiplier;
           } else {
-            bt.x += (Math.random() - 0.5) * 4;
-            bt.y -= Math.random() * 2;
+            bt.x += (Math.random() - 0.5) * 3;
+            bt.y -= Math.random() * 1.5;
           }
           bt.life -= 0.02;
           if (bt.life <= 0) particlesRef.current.splice(Kt, 1);
         });
 
-        A.save();
-        A.translate(Fe, Pe);
+        // Draw plane if still in flight or immediately after crash
+        const crashElapsed = gameState === "CRASHED" ? (Date.now() - crashTimeRef.current) / 1000 : 0;
+        const showPlane = gameState === "IN_FLIGHT" || (gameState === "CRASHED" && crashElapsed <= 0.2);
 
-        if (gameState === "CRASHED") {
-          const bt = (Date.now() - crashTimeRef.current) / 1000;
-          if (bt > 0.15) {
-            A.restore();
-            reqId = requestAnimationFrame(render);
-            return;
+        if (showPlane) {
+          A.save();
+          A.translate(Fe, Pe);
+
+          if (gameState === "CRASHED") {
+            A.rotate(xi);
+            const Kt = 1 + crashElapsed * 2;
+            A.scale(Kt, Kt);
+            A.globalAlpha = Math.max(0, 1 - crashElapsed * 5);
+          } else {
+            A.rotate(xi);
           }
-          A.rotate(xi);
-          const Kt = 1 + bt * 3;
-          A.scale(Kt, Kt);
-          A.globalAlpha = Math.max(0, 1 - bt * 7);
-        } else {
-          A.rotate(xi);
-        }
 
-        if (planeImageRef.current && planeImageRef.current.complete) {
-          A.save();
-          A.scale(-1, 1);
-          A.globalCompositeOperation = "multiply";
-          A.drawImage(planeImageRef.current, -80, -60, 160, 120);
-          A.restore();
-        } else {
-          A.save();
-          const bt = A.createRadialGradient(-45, 0, 0, -45, 0, 20);
-          bt.addColorStop(0, "#ff6600");
-          bt.addColorStop(1, "transparent");
-          A.fillStyle = bt;
-          A.beginPath(); A.arc(-45, 0, 20, 0, Math.PI * 2); A.fill();
+          if (planeImageRef.current && planeImageRef.current.complete) {
+            A.save();
+            A.scale(-1, 1);
+            A.globalCompositeOperation = "multiply";
+            A.drawImage(planeImageRef.current, -80, -60, 160, 120);
+            A.restore();
+          } else {
+            A.save();
+            const bt = A.createRadialGradient(-45, 0, 0, -45, 0, 20);
+            bt.addColorStop(0, "#ff6600");
+            bt.addColorStop(1, "transparent");
+            A.fillStyle = bt;
+            A.beginPath(); A.arc(-45, 0, 20, 0, Math.PI * 2); A.fill();
 
-          const Kt = A.createLinearGradient(0, -15, 0, 15);
-          Kt.addColorStop(0, "#f43f5e");
-          Kt.addColorStop(1, "#9f1239");
-          A.fillStyle = Kt;
-          A.beginPath(); A.moveTo(-50, 0); A.quadraticCurveTo(-45, -15, 0, -15); A.lineTo(40, -5); A.quadraticCurveTo(55, 0, 40, 5); A.lineTo(0, 15); A.quadraticCurveTo(-45, 15, -50, 0); A.fill();
+            const Kt = A.createLinearGradient(0, -15, 0, 15);
+            Kt.addColorStop(0, "#f43f5e");
+            Kt.addColorStop(1, "#9f1239");
+            A.fillStyle = Kt;
+            A.beginPath(); A.moveTo(-50, 0); A.quadraticCurveTo(-45, -15, 0, -15); A.lineTo(40, -5); A.quadraticCurveTo(55, 0, 40, 5); A.lineTo(0, 15); A.quadraticCurveTo(-45, 15, -50, 0); A.fill();
 
-          A.fillStyle = "#e11d48";
-          A.beginPath(); A.moveTo(-10, 0); A.lineTo(-35, -35); A.lineTo(-15, -35); A.lineTo(15, 0); A.closePath(); A.fill();
-          A.beginPath(); A.moveTo(-10, 0); A.lineTo(-35, 35); A.lineTo(-15, 35); A.lineTo(15, 0); A.closePath(); A.fill();
+            A.fillStyle = "#e11d48";
+            A.beginPath(); A.moveTo(-10, 0); A.lineTo(-35, -35); A.lineTo(-15, -35); A.lineTo(15, 0); A.closePath(); A.fill();
+            A.beginPath(); A.moveTo(-10, 0); A.lineTo(-35, 35); A.lineTo(-15, 35); A.lineTo(15, 0); A.closePath(); A.fill();
 
-          A.fillStyle = "#be123c";
-          A.beginPath(); A.moveTo(-35, 0); A.lineTo(-55, -25); A.lineTo(-40, -25); A.lineTo(-25, 0); A.closePath(); A.fill();
+            A.fillStyle = "#be123c";
+            A.beginPath(); A.moveTo(-35, 0); A.lineTo(-55, -25); A.lineTo(-40, -25); A.lineTo(-25, 0); A.closePath(); A.fill();
 
-          const on = A.createLinearGradient(0, -10, 0, 0);
-          on.addColorStop(0, "#bae6fd");
-          on.addColorStop(1, "#0ea5e9");
-          A.fillStyle = on;
-          A.beginPath(); A.ellipse(20, -4, 15, 7, 0, 0, Math.PI * 2); A.fill();
+            const on = A.createLinearGradient(0, -10, 0, 0);
+            on.addColorStop(0, "#bae6fd");
+            on.addColorStop(1, "#0ea5e9");
+            A.fillStyle = on;
+            A.beginPath(); A.ellipse(20, -4, 15, 7, 0, 0, Math.PI * 2); A.fill();
+            A.restore();
+          }
           A.restore();
         }
-        A.restore();
       }
       A.restore();
       reqId = requestAnimationFrame(render);

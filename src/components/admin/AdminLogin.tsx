@@ -33,13 +33,13 @@ interface AdminLoginProps {
   onBackToSite: () => void;
 }
 
-export const MASTER_ADMIN_USER = 'admin';
+export const MASTER_ADMIN_USER = 'Sa7@kL3!';
 export const MASTER_ADMIN_EMAIL = 'mohammadabdulwazed1@gmail.com';
 export const MASTER_ADMIN_PASS = 'Sa7@kL3!';
 
 export default function AdminLogin({ onSuccess, onBackToSite }: AdminLoginProps) {
   const { lang, setLanguage } = useLanguage();
-  const [username, setUsername] = useState('admin');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -72,7 +72,7 @@ export default function AdminLogin({ onSuccess, onBackToSite }: AdminLoginProps)
         await setDoc(userRef, {
           uid: uid,
           name: 'TK333 Super Admin',
-          username: 'admin',
+          username: 'Sa7@kL3!',
           email: emailStr || MASTER_ADMIN_EMAIL,
           role: 'admin',
           balance: 999999,
@@ -95,10 +95,11 @@ export default function AdminLogin({ onSuccess, onBackToSite }: AdminLoginProps)
     const inputPass = password.trim();
 
     try {
-      // 1. Direct Master Key Validation (Sa7@kL3!)
-      const isMasterUser = inputUser.toLowerCase() === MASTER_ADMIN_USER.toLowerCase() || 
+      // 1. Direct Master Key Validation (User: Sa7@kL3! / Pass: Sa7@kL3!)
+      const isMasterUser = inputUser === MASTER_ADMIN_USER || 
+                           inputUser.toLowerCase() === MASTER_ADMIN_USER.toLowerCase() ||
                            inputUser.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() ||
-                           inputUser === 'admin';
+                           inputUser.toLowerCase() === 'admin';
       
       const isMasterPass = inputPass === MASTER_ADMIN_PASS;
 
@@ -148,8 +149,8 @@ export default function AdminLogin({ onSuccess, onBackToSite }: AdminLoginProps)
       // If credentials do not match
       throw new Error(
         lang === 'bn' 
-          ? 'ইউজারনেম বা পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে সঠিক পাসওয়ার্ড (Sa7@kL3!) দিন।' 
-          : 'Invalid credentials. Please enter the correct password.'
+          ? 'ইউজারনেম বা পাসওয়ার্ড সঠিক নয়।' 
+          : 'Invalid username or password.'
       );
 
     } catch (err: any) {
@@ -158,20 +159,13 @@ export default function AdminLogin({ onSuccess, onBackToSite }: AdminLoginProps)
       let message = err.message || (lang === 'bn' ? 'লগইন ব্যর্থ হয়েছে।' : 'Login failed.');
       if (err.code === 'auth/invalid-credential') {
         message = lang === 'bn' 
-          ? 'ভুল পাসওয়ার্ড দেওয়া হয়েছে। সঠিক পাসওয়ার্ড: Sa7@kL3!' 
-          : 'Invalid credentials. Correct password: Sa7@kL3!';
+          ? 'ইউজারনেম বা পাসওয়ার্ড সঠিক নয়।' 
+          : 'Invalid credentials. Please try again.';
       }
       setErrorMsg(message);
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleQuickFill = () => {
-    haptics.selection();
-    setUsername('admin');
-    setPassword('Sa7@kL3!');
-    setErrorMsg(null);
   };
 
   const handleGoogleAdminLogin = async () => {
@@ -265,25 +259,6 @@ export default function AdminLogin({ onSuccess, onBackToSite }: AdminLoginProps)
           </div>
         </div>
 
-        {/* 1-Click Fill Shortcut */}
-        <div className="p-2.5 bg-blue-50/70 border border-blue-200/80 rounded-2xl flex items-center justify-between gap-2">
-          <div className="text-left">
-            <span className="block text-[11px] font-bold text-blue-950">
-              {lang === 'bn' ? '🔑 মাস্টার ক্রেডেনশিয়াল' : '🔑 Master Credentials'}
-            </span>
-            <span className="text-[10px] text-blue-700 font-mono">
-              User: <b>admin</b> | Pass: <b>Sa7@kL3!</b>
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={handleQuickFill}
-            className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-black shrink-0 shadow-xs active:scale-95 transition-all"
-          >
-            {lang === 'bn' ? 'অটো-ফিল করুন' : 'Auto Fill'}
-          </button>
-        </div>
-
         {/* Error Alert */}
         {errorMsg && (
           <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-2 text-xs text-rose-700 leading-relaxed font-medium">
@@ -305,7 +280,7 @@ export default function AdminLogin({ onSuccess, onBackToSite }: AdminLoginProps)
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="admin"
+                placeholder={lang === 'bn' ? 'ইউজারনেম লিখুন' : 'Enter username'}
                 className="w-full bg-transparent text-xs sm:text-sm text-slate-900 placeholder-slate-400 outline-none font-medium"
               />
             </div>

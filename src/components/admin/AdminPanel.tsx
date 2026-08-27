@@ -2156,12 +2156,34 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                 </div>
 
                 <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-700 uppercase">বিকাশ ডিপোজিট নম্বর (bKash Deposit Number):</label>
+                  <input
+                    type="text"
+                    value={settings?.depositBkashNumber || '01641404837'}
+                    onChange={(e) => setSettings(prev => ({ ...prev, depositBkashNumber: e.target.value }))}
+                    placeholder="01641404837"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-700 uppercase">নগদ ডিপোজিট নম্বর (Nagad Deposit Number):</label>
+                  <input
+                    type="text"
+                    value={settings?.depositNagadNumber || '01641404837'}
+                    onChange={(e) => setSettings(prev => ({ ...prev, depositNagadNumber: e.target.value }))}
+                    placeholder="01641404837"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono font-bold"
+                  />
+                </div>
+
+                <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-700 uppercase">সাপোর্ট হোয়াটসঅ্যাপ নম্বর (WhatsApp):</label>
                   <input
                     type="text"
-                    value={settings?.supportWhatsapp || '+8801340772478'}
+                    value={settings?.supportWhatsapp || '+8801641404837'}
                     onChange={(e) => setSettings(prev => ({ ...prev, supportWhatsapp: e.target.value }))}
-                    placeholder="+8801XXXXXXXXX"
+                    placeholder="+8801641404837"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono"
                   />
                 </div>

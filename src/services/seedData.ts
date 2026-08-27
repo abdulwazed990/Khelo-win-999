@@ -319,9 +319,9 @@ export const INITIAL_PROMOTIONS: Omit<PromotionItem, 'id'>[] = [
 ];
 
 export const INITIAL_ANNOUNCEMENT: Omit<AnnouncementItem, 'id'> = {
-  text: '🔥 TK333 অফিসিয়াল মোবাইল ক্যাসিনোতে স্বাগতম! 🎉 প্রথম ডিপোজিটে ১০০% বোনাস সর্বোচ্চ ২০,০০০ টাকা পর্যন্ত! ⚡ মাত্র ৩০ সেকেন্ডে বিকাশ, নগদ ও রকেটে দ্রুত ডিপোজিট ও উইথড্র! 🏆 মেম্বার ***৮৮২১ সুপার এস গেমে জিতেছেন ১,৪৮,৫০০ টাকা!',
-  announcementBn: '🔥 TK333 অফিসিয়াল মোবাইল ক্যাসিনোতে স্বাগতম! 🎉 প্রথম ডিপোজিটে ১০০% বোনাস সর্বোচ্চ ২০,০০০ টাকা পর্যন্ত! ⚡ মাত্র ৩০ সেকেন্ডে বিকাশ, নগদ ও রকেটে দ্রুত ডিপোজিট ও উইথড্র! 🏆 মেম্বার ***৮৮২১ সুপার এস গেমে জিতেছেন ১,৪৮,৫০০ টাকা!',
-  announcementEn: '🔥 Welcome to TK333 Official Mobile Casino! 🎉 100% First Deposit Bonus up to ৳20,000! ⚡ Instant Bkash, Nagad & Rocket deposits in 30 seconds! 🏆 Member ***8821 just won ৳148,500 on Super Ace!',
+  text: '🔥 TK333 অফিসিয়াল মোবাইল ক্যাসিনোতে স্বাগতম! 🎉 প্রথম ডিপোজিটে ১০০% বোনাস সর্বোচ্চ ২০,০০০ টাকা পর্যন্ত! ⚡ মাত্র ৩০ সেকেন্ডে বিকাশ ও নগদে দ্রুত ডিপোজিট ও উইথড্র! 🏆 মেম্বার ***৮৮২১ সুপার এস গেমে জিতেছেন ১,৪৮,৫০০ টাকা!',
+  announcementBn: '🔥 TK333 অফিসিয়াল মোবাইল ক্যাসিনোতে স্বাগতম! 🎉 প্রথম ডিপোজিটে ১০০% বোনাস সর্বোচ্চ ২০,০০০ টাকা পর্যন্ত! ⚡ মাত্র ৩০ সেকেন্ডে বিকাশ ও নগদে দ্রুত ডিপোজিট ও উইথড্র! 🏆 মেম্বার ***৮৮২১ সুপার এস গেমে জিতেছেন ১,৪৮,৫০০ টাকা!',
+  announcementEn: '🔥 Welcome to TK333 Official Mobile Casino! 🎉 100% First Deposit Bonus up to ৳20,000! ⚡ Instant bKash & Nagad deposits in 30 seconds! 🏆 Member ***8821 just won ৳148,500 on Super Ace!',
   active: true,
   status: 'active',
   priority: 1
@@ -332,16 +332,15 @@ export const INITIAL_SETTINGS: SiteSettings = {
   defaultLanguage: 'bn',
   telegramUrl: 'https://t.me/TK333_Official',
   liveChatUrl: 'https://tawk.to',
-  whatsappUrl: 'https://wa.me/8801700000000',
+  whatsappUrl: 'https://wa.me/8801641404837',
   facebookUrl: 'https://facebook.com/TK333Official',
   supportEnabled: true,
   maintenanceMode: false,
   footerText: 'TK333 কুরাকাও সরকার কর্তৃক লাইসেন্সপ্রাপ্ত ও নিয়ন্ত্রিত। ১৮+ দায়িত্বশীলভাবে খেলুন।',
   footerTextBn: 'TK333 কুরাকাও সরকার কর্তৃক লাইসেন্সপ্রাপ্ত ও নিয়ন্ত্রিত। ১৮+ দায়িত্বশীলভাবে খেলুন।',
   footerTextEn: 'TK333 is licensed and regulated by the Government of Curacao. 18+ Play Responsibly.',
-  depositBkashNumber: '01712345678',
-  depositNagadNumber: '01812345678',
-  depositRocketNumber: '01912345678'
+  depositBkashNumber: '01641404837',
+  depositNagadNumber: '01641404837'
 };
 
 export async function seedInitialFirestoreData() {

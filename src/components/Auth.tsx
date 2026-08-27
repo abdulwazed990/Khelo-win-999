@@ -82,17 +82,18 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
         await updateProfile(user, { displayName: name });
 
         try {
+          const isAdminUser = email === 'mohammadabdulwazed1@gmail.com';
           await setDoc(doc(db, 'users', user.uid), {
             uid: user.uid,
             name,
             username: cleanUsername,
             phone: contactType === 'phone' ? contact.trim() : '',
             email: user.email,
-            balance: 888,
+            balance: 10,
             welcomeBonusClaimed: true,
             lastDailyBonusAt: '',
             freeSpins: 0,
-            role: 'user',
+            role: isAdminUser ? 'admin' : 'user',
             createdAt: new Date().toISOString()
           });
         } catch (err) {
@@ -125,38 +126,64 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
       setLoading(true);
       setError('');
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
-      // Check if user doc exists
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (!user) {
+        throw new Error('Google Sign-In could not retrieve user profile');
+      }
+
+      // Check if user doc exists in database
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userDocRef);
+      
       if (!userDoc.exists()) {
-        const generatedUsername = (user.email?.split('@')[0] || `user_${Date.now().toString().slice(-4)}`).toLowerCase();
-        await setDoc(doc(db, 'users', user.uid), {
+        const emailPrefix = (user.email?.split('@')[0] || `user_${Date.now().toString().slice(-4)}`)
+          .replace(/[^a-zA-Z0-9_]/g, '')
+          .toLowerCase();
+        const generatedUsername = emailPrefix.length >= 3 ? emailPrefix : `user_${user.uid.slice(0, 5).toLowerCase()}`;
+        const isAdminUser = user.email === 'mohammadabdulwazed1@gmail.com';
+
+        await setDoc(userDocRef, {
           uid: user.uid,
           name: user.displayName || 'TK333 Member',
           username: generatedUsername,
           email: user.email,
-          phone: '',
-          balance: 888,
+          phone: user.phoneNumber || '',
+          balance: 10,
           welcomeBonusClaimed: true,
           freeSpins: 0,
-          role: 'user',
+          role: isAdminUser ? 'admin' : 'user',
           createdAt: new Date().toISOString()
         });
 
-        await setDoc(doc(db, 'usernames', generatedUsername), {
-          email: user.email,
-          uid: user.uid
-        });
+        try {
+          await setDoc(doc(db, 'usernames', generatedUsername), {
+            email: user.email,
+            uid: user.uid
+          });
+        } catch (err) {
+          // Non-blocking username mapping error
+          console.warn('Username indexing note:', err);
+        }
       }
 
       haptics.success();
       onSuccess();
     } catch (err: any) {
-      console.error(err);
-      haptics.error();
-      setError(err.message || 'Google Sign-In failed');
+      console.error('Google Sign-In Error:', err);
+      // Suppress noisy error message if user simply closed the popup
+      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+        setError('');
+      } else if (err.code === 'auth/popup-blocked') {
+        setError(lang === 'bn' ? 'ব্রাউজার পপআপ ব্লক করেছে। অনুগ্রহ করে পপআপ অনুমোদন করুন।' : 'Popup was blocked by browser. Please allow popups.');
+        haptics.error();
+      } else {
+        haptics.error();
+        setError(err.message || (lang === 'bn' ? 'Google সাইন-ইন সম্পন্ন করা সম্ভব হয়নি।' : 'Google Sign-In failed'));
+      }
     } finally {
       setLoading(false);
     }
@@ -177,7 +204,7 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
         <p className="text-slate-500 text-xs mt-1">
           {isLogin 
             ? (lang === 'bn' ? 'আপনার ইউজারনেম ও পাসওয়ার্ড দিন' : 'Login to manage wallet and play instantly') 
-            : (lang === 'bn' ? 'রেজিস্ট্রেশন করলেই পাচ্ছেন তাৎক্ষণিক ৳৮৮৮ ফ্রি বোনাস!' : 'Register and receive ৳888 instant welcome bonus!')}
+            : (lang === 'bn' ? 'রেজিস্ট্রেশন করলেই পাচ্ছেন তাৎক্ষণিক ৳১০ ফ্রি বোনাস!' : 'Register and receive ৳10 instant welcome bonus!')}
         </p>
       </div>
 

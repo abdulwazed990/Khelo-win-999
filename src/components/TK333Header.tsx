@@ -372,26 +372,19 @@ export default function TK333Header({
                     onClick={() => handleNavClick('member')} 
                   />
                   
-                  {/* Admin Portal Link */}
-                  <div className="pt-2 mt-2 border-t border-slate-200">
+                  {/* Subtle System Diagnostics / Admin Portal Link */}
+                  <div className="pt-2 mt-2 border-t border-slate-100">
                     <button
                       onClick={() => handleNavClick('admin')}
-                      className="w-full flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-amber-500/15 via-yellow-400/20 to-amber-500/15 border-2 border-amber-400/60 text-amber-950 font-black text-xs hover:bg-amber-100/70 transition-all shadow-xs group"
+                      className="w-full flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-all text-xs font-medium group"
                     >
                       <span className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-xl bg-amber-500 text-black flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform">
-                          <Sliders size={15} />
-                        </div>
-                        <span className="font-chakra font-black text-slate-900 text-xs">
-                          {lang === 'bn' ? '⚙️ অ্যাডমিন কন্ট্রোল প্যানেল' : '⚙️ Administrator Console'}
+                        <Sliders size={14} className="text-slate-400 group-hover:text-slate-600" />
+                        <span className="text-[11px] font-chakra text-slate-500 group-hover:text-slate-700">
+                          {lang === 'bn' ? 'সিস্টেম স্ট্যাটাস ও ডায়াগনস্টিকস' : 'System Diagnostics & Telemetry'}
                         </span>
                       </span>
-                      <div className="flex items-center gap-1">
-                        <span className="text-[9px] bg-amber-500 text-black font-black px-1.5 py-0.5 rounded-md uppercase">
-                          ADMIN
-                        </span>
-                        <ChevronRight size={14} className="text-amber-700" />
-                      </div>
+                      <ChevronRight size={13} className="text-slate-400" />
                     </button>
                   </div>
                 </div>

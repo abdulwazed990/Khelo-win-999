@@ -102,8 +102,39 @@ export default function RouletteGame({ user, userData, onBack }: RouletteGamePro
       setWinningNumber(null);
       playSfx(wheelSound.current);
 
-      // Random winning number from European wheel
-      const outcomeIndex = Math.floor(Math.random() * ROULETTE_NUMBERS.length);
+      // Determine winning number with 60% win rate target
+      let outcomeIndex = Math.floor(Math.random() * ROULETTE_NUMBERS.length);
+      const isTargetWin = Math.random() < 0.60;
+
+      if (isTargetWin) {
+        // Find numbers that result in a win
+        const winningCandidates: number[] = [];
+        ROULETTE_NUMBERS.forEach((num, idx) => {
+          const isRed = RED_NUMBERS.includes(num);
+          const isBlack = num !== 0 && !isRed;
+          const isEven = num !== 0 && num % 2 === 0;
+          const isOdd = num !== 0 && num % 2 !== 0;
+          const isLow = num >= 1 && num <= 18;
+          const isHigh = num >= 19 && num <= 36;
+
+          if (
+            bets[`num_${num}`] ||
+            (isRed && bets['red']) ||
+            (isBlack && bets['black']) ||
+            (isEven && bets['even']) ||
+            (isOdd && bets['odd']) ||
+            (isLow && bets['low']) ||
+            (isHigh && bets['high'])
+          ) {
+            winningCandidates.push(idx);
+          }
+        });
+
+        if (winningCandidates.length > 0) {
+          outcomeIndex = winningCandidates[Math.floor(Math.random() * winningCandidates.length)];
+        }
+      }
+
       const outcomeNumber = ROULETTE_NUMBERS[outcomeIndex];
 
       // Calculate degrees: each segment is 360 / 37 ≈ 9.7297 deg

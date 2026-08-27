@@ -368,13 +368,13 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
 
     setWinningCells(Array(REEL_COUNT).fill(null).map(() => Array(ROW_COUNT).fill(false)));
 
-    // Outcome Generation
+    // Outcome Generation (60% Win Rate)
     const outcomeRand = Math.random();
     let outcomeType: 'none' | 'small' | 'medium' | 'big' = 'none';
     
-    if (outcomeRand < 0.03) outcomeType = 'big';
-    else if (outcomeRand < 0.10) outcomeType = 'medium';
-    else if (outcomeRand < 0.35) outcomeType = 'small';
+    if (outcomeRand < 0.05) outcomeType = 'big';
+    else if (outcomeRand < 0.20) outcomeType = 'medium';
+    else if (outcomeRand < 0.60) outcomeType = 'small';
     else outcomeType = 'none';
 
     const canTriggerKing = kingSpinCount >= kingThreshold || Math.random() < 0.005;
