@@ -31,6 +31,7 @@ import AviatorJetGame from './components/AviatorJetGame';
 import MinesGame from './components/MinesGame';
 import RouletteGame from './components/RouletteGame';
 import CoinflipGame from './components/CoinflipGame';
+import GameStatusGuard from './components/GameStatusGuard';
 
 // Aviator Signal Ecosystem
 import AviatorSignalApp from './components/signal/AviatorSignalApp';
@@ -269,26 +270,38 @@ export default function App() {
     return (
       <div className="fixed inset-0 z-[100] bg-black overflow-hidden select-none">
         {currentPage === 'aviator-jet' && (
-          <AviatorJetGame 
-            user={user} 
-            userData={userData} 
-            onBack={() => handleNavigate('home')} 
-          />
+          <GameStatusGuard gameId="aviator-jet" fallbackTitle="Aviator Jet" onBack={() => handleNavigate('home')}>
+            <AviatorJetGame 
+              user={user} 
+              userData={userData} 
+              onBack={() => handleNavigate('home')} 
+            />
+          </GameStatusGuard>
         )}
         {currentPage === 'pokie-super-ace' && (
-          <PokieSuperAceGame user={user} userData={userData} onBack={() => handleNavigate('home')} />
+          <GameStatusGuard gameId="super-ace" fallbackTitle="Super Ace" onBack={() => handleNavigate('home')}>
+            <PokieSuperAceGame user={user} userData={userData} onBack={() => handleNavigate('home')} />
+          </GameStatusGuard>
         )}
         {(currentPage === 'game' || currentPage === 'boxer-king') && (
-          <BoxerKingGame user={user} userData={userData} onBack={() => handleNavigate('home')} />
+          <GameStatusGuard gameId="boxer-king" fallbackTitle="Boxer King" onBack={() => handleNavigate('home')}>
+            <BoxerKingGame user={user} userData={userData} onBack={() => handleNavigate('home')} />
+          </GameStatusGuard>
         )}
         {currentPage === 'mines' && (
-          <MinesGame user={user} userData={userData} onBack={() => handleNavigate('home')} />
+          <GameStatusGuard gameId="mines" fallbackTitle="Mines" onBack={() => handleNavigate('home')}>
+            <MinesGame user={user} userData={userData} onBack={() => handleNavigate('home')} />
+          </GameStatusGuard>
         )}
         {currentPage === 'roulette' && (
-          <RouletteGame user={user} userData={userData} onBack={() => handleNavigate('home')} />
+          <GameStatusGuard gameId="roulette" fallbackTitle="Roulette" onBack={() => handleNavigate('home')}>
+            <RouletteGame user={user} userData={userData} onBack={() => handleNavigate('home')} />
+          </GameStatusGuard>
         )}
         {currentPage === 'coinflip' && (
-          <CoinflipGame user={user} userData={userData} onBack={() => handleNavigate('home')} />
+          <GameStatusGuard gameId="coinflip" fallbackTitle="Coin Flip" onBack={() => handleNavigate('home')}>
+            <CoinflipGame user={user} userData={userData} onBack={() => handleNavigate('home')} />
+          </GameStatusGuard>
         )}
       </div>
     );

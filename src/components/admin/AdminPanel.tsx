@@ -69,10 +69,23 @@ import {
   Link as LinkIcon,
   AlertTriangle,
   Sparkles,
-  Radio
+  Radio,
+  ArrowUpRight,
+  ArrowDownRight,
+  Wallet,
+  ServerCrash,
+  Wrench,
+  ShieldAlert,
+  AlertOctagon,
+  Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { updateGameStatus, normalizeGameStatus, NormalizedGameStatus } from '../../services/gameStatusService';
 import SignalManagementTab from './SignalManagementTab';
+import WithdrawalsTab from './WithdrawalsTab';
+import DepositsTab from './DepositsTab';
+import AuditLogsTab from './AuditLogsTab';
+import TransactionsLedgerTab from './TransactionsLedgerTab';
 
 interface AdminPanelProps {
   user: User | null;
@@ -82,6 +95,10 @@ interface AdminPanelProps {
 
 type TabType = 
   | 'overview' 
+  | 'withdrawals'
+  | 'deposits'
+  | 'transactions'
+  | 'audit_logs'
   | 'banners' 
   | 'home_ads' 
   | 'games' 
@@ -91,7 +108,6 @@ type TabType =
   | 'payment_methods' 
   | 'signal_management'
   | 'settings' 
-  | 'transactions'
   | 'users';
 
 const PRESET_BANNERS = [
@@ -301,6 +317,35 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
   const [uploadingImage, setUploadingImage] = useState<boolean>(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
+
+  // Server Error & Game Status Control States
+  const [quickErrorGame, setQuickErrorGame] = useState<GameItem | null>(null);
+  const [quickErrorReason, setQuickErrorReason] = useState<string>('');
+  const [statusConfigGame, setStatusConfigGame] = useState<GameItem | null>(null);
+  const [statusConfigForm, setStatusConfigForm] = useState<{
+    status: NormalizedGameStatus;
+    reason: string;
+    maintenanceTitle: string;
+    maintenanceTitleBn: string;
+    maintenanceDescription: string;
+    maintenanceDescriptionBn: string;
+    maintenanceEstimatedTime: string;
+    maintenanceButtonText: string;
+    maintenanceButtonTextBn: string;
+  }>({
+    status: 'ACTIVE',
+    reason: '',
+    maintenanceTitle: '',
+    maintenanceTitleBn: '',
+    maintenanceDescription: '',
+    maintenanceDescriptionBn: '',
+    maintenanceEstimatedTime: '',
+    maintenanceButtonText: '',
+    maintenanceButtonTextBn: ''
+  });
+  const [gameStatusFilter, setGameStatusFilter] = useState<'ALL' | 'ACTIVE' | 'SERVER_ERROR' | 'MAINTENANCE' | 'DISABLED'>('ALL');
+  const [updatingGameStatusId, setUpdatingGameStatusId] = useState<string | null>(null);
+  const [cardSelectedStatus, setCardSelectedStatus] = useState<Record<string, NormalizedGameStatus>>({});
 
   const showToast = (msg: string) => {
     setSaveSuccessMessage(msg);
@@ -571,6 +616,7 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
     try {
       const gameId = editingGame.id || `game_${Date.now()}`;
       const docRef = doc(db, 'games', gameId);
+      const normalizedStatus = normalizeGameStatus(editingGame.status);
       const dataToSave = {
         title: editingGame.title,
         titleBn: editingGame.titleBn || editingGame.title,
@@ -583,7 +629,14 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
         hot: editingGame.hot || false,
         popular: editingGame.popular || false,
         featured: editingGame.featured || false,
-        status: editingGame.status || 'active',
+        status: normalizedStatus,
+        gameStatus: normalizedStatus,
+        statusReason: editingGame.statusReason || '',
+        maintenanceTitle: editingGame.maintenanceTitle || '',
+        maintenanceTitleBn: editingGame.maintenanceTitleBn || '',
+        maintenanceDescription: editingGame.maintenanceDescription || '',
+        maintenanceDescriptionBn: editingGame.maintenanceDescriptionBn || '',
+        maintenanceEstimatedTime: editingGame.maintenanceEstimatedTime || '',
         order: Number(editingGame.order) || (games.length + 1),
         updatedAt: new Date().toISOString()
       };
@@ -593,6 +646,204 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
       setEditingGame(null);
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'games');
+    }
+  };
+
+  // 1-Click Game Reactivation
+  const handleQuickActivateGame = async (game: GameItem) => {
+    haptics.success();
+    setUpdatingGameStatusId(game.id);
+    const adminEmail = user?.email || userData?.email || 'admin@tk333.vip';
+    const res = await updateGameStatus(game.id, 'ACTIVE', 'Admin reactivated game', adminEmail);
+    
+    // Synchronize Express Server Status
+    try {
+      await fetch(`/api/games/${encodeURIComponent(game.id)}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'ACTIVE', reason: 'Admin reactivated game' })
+      });
+      if (game.slug || game.route) {
+        await fetch(`/api/games/${encodeURIComponent(game.slug || game.route || '')}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'ACTIVE', reason: 'Admin reactivated game' })
+        });
+      }
+    } catch (e) {
+      console.warn('Backend status sync notice:', e);
+    }
+
+    setUpdatingGameStatusId(null);
+    if (res.success) {
+      showToast(lang === 'bn' ? `✓ "${game.titleBn || game.title}" সক্রিয় করা হয়েছে!` : `✓ "${game.title}" is now ACTIVE!`);
+    } else {
+      alert(res.error || 'Failed to activate game');
+    }
+  };
+
+  // Confirm Quick Server Error
+  const handleConfirmQuickServerError = async () => {
+    if (!quickErrorGame) return;
+    haptics.error();
+    setUpdatingGameStatusId(quickErrorGame.id);
+    const adminEmail = user?.email || userData?.email || 'admin@tk333.vip';
+    const reason = quickErrorReason.trim() || 'Technical server error & engine calibration';
+    const res = await updateGameStatus(quickErrorGame.id, 'SERVER_ERROR', reason, adminEmail);
+
+    // Synchronize Express Server Status
+    try {
+      await fetch(`/api/games/${encodeURIComponent(quickErrorGame.id)}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'SERVER_ERROR', reason })
+      });
+      if (quickErrorGame.slug || quickErrorGame.route) {
+        await fetch(`/api/games/${encodeURIComponent(quickErrorGame.slug || quickErrorGame.route || '')}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'SERVER_ERROR', reason })
+        });
+      }
+    } catch (e) {
+      console.warn('Backend status sync notice:', e);
+    }
+
+    setUpdatingGameStatusId(null);
+    setQuickErrorGame(null);
+    setQuickErrorReason('');
+    if (res.success) {
+      showToast(lang === 'bn' ? `🔴 "${quickErrorGame.titleBn || quickErrorGame.title}" সার্ভার এরর মোডে নেওয়া হয়েছে!` : `🔴 "${quickErrorGame.title}" is now in SERVER ERROR mode!`);
+    } else {
+      alert(res.error || 'Failed to set server error');
+    }
+  };
+
+  // Direct Card Status Dropdown Save Handler
+  const handleSaveCardStatus = async (game: GameItem) => {
+    const currentStatus = normalizeGameStatus(game.status);
+    const targetStatus = cardSelectedStatus[game.id] || currentStatus;
+
+    if (targetStatus === currentStatus) {
+      showToast(lang === 'bn' ? 'স্ট্যাটাস ইতিমধ্যে অপরিবর্তিত।' : 'Status is already set to ' + targetStatus);
+      return;
+    }
+
+    if (targetStatus === 'SERVER_ERROR') {
+      setQuickErrorGame(game);
+      setQuickErrorReason(game.statusReason || 'Technical server error & engine calibration');
+      return;
+    }
+
+    haptics.medium();
+    setUpdatingGameStatusId(game.id);
+    const adminEmail = user?.email || userData?.email || 'admin@tk333.vip';
+    const reason = targetStatus === 'MAINTENANCE' 
+      ? (game.statusReason || 'Routine scheduled maintenance') 
+      : targetStatus === 'DISABLED' 
+      ? 'Game disabled by admin' 
+      : 'Admin reactivated game';
+
+    const res = await updateGameStatus(game.id, targetStatus, reason, adminEmail);
+
+    try {
+      await fetch(`/api/games/${encodeURIComponent(game.id)}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: targetStatus, reason })
+      });
+      if (game.slug || game.route) {
+        await fetch(`/api/games/${encodeURIComponent(game.slug || game.route || '')}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: targetStatus, reason })
+        });
+      }
+    } catch (e) {
+      console.warn('Backend status sync notice:', e);
+    }
+
+    setUpdatingGameStatusId(null);
+    if (res.success) {
+      showToast(lang === 'bn' ? `✓ "${game.titleBn || game.title}" স্ট্যাটাস ${targetStatus} করা হয়েছে!` : `✓ "${game.title}" status saved to ${targetStatus}!`);
+    } else {
+      alert(res.error || 'Failed to update game status.');
+    }
+  };
+
+  // Open Status & Maintenance Config Modal
+  const handleOpenStatusConfig = (game: GameItem) => {
+    haptics.selection();
+    setStatusConfigGame(game);
+    setStatusConfigForm({
+      status: normalizeGameStatus(game.status),
+      reason: game.statusReason || '',
+      maintenanceTitle: game.maintenanceTitle || '',
+      maintenanceTitleBn: game.maintenanceTitleBn || '',
+      maintenanceDescription: game.maintenanceDescription || '',
+      maintenanceDescriptionBn: game.maintenanceDescriptionBn || '',
+      maintenanceEstimatedTime: game.maintenanceEstimatedTime || '',
+      maintenanceButtonText: game.maintenanceButtonText || '',
+      maintenanceButtonTextBn: game.maintenanceButtonTextBn || ''
+    });
+  };
+
+  // Save Status & Maintenance Config
+  const handleSaveStatusConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!statusConfigGame) return;
+    haptics.medium();
+    setUpdatingGameStatusId(statusConfigGame.id);
+    const adminEmail = user?.email || userData?.email || 'admin@tk333.vip';
+    const res = await updateGameStatus(
+      statusConfigGame.id,
+      statusConfigForm.status,
+      statusConfigForm.reason,
+      adminEmail,
+      {
+        maintenanceTitle: statusConfigForm.maintenanceTitle,
+        maintenanceTitleBn: statusConfigForm.maintenanceTitleBn,
+        maintenanceDescription: statusConfigForm.maintenanceDescription,
+        maintenanceDescriptionBn: statusConfigForm.maintenanceDescriptionBn,
+        maintenanceEstimatedTime: statusConfigForm.maintenanceEstimatedTime,
+        maintenanceButtonText: statusConfigForm.maintenanceButtonText,
+        maintenanceButtonTextBn: statusConfigForm.maintenanceButtonTextBn
+      }
+    );
+
+    // Sync Express Server Status
+    try {
+      await fetch(`/api/games/${encodeURIComponent(statusConfigGame.id)}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: statusConfigForm.status,
+          reason: statusConfigForm.reason,
+          maintenanceTitle: statusConfigForm.maintenanceTitle,
+          maintenanceDescription: statusConfigForm.maintenanceDescription,
+          maintenanceEstimatedTime: statusConfigForm.maintenanceEstimatedTime
+        })
+      });
+      if (statusConfigGame.slug || statusConfigGame.route) {
+        await fetch(`/api/games/${encodeURIComponent(statusConfigGame.slug || statusConfigGame.route || '')}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status: statusConfigForm.status,
+            reason: statusConfigForm.reason
+          })
+        });
+      }
+    } catch (e) {
+      console.warn('Backend status sync notice:', e);
+    }
+
+    setUpdatingGameStatusId(null);
+    setStatusConfigGame(null);
+    if (res.success) {
+      showToast(lang === 'bn' ? '✓ গেম স্ট্যাটাস ও সেটিংস আপডেট হয়েছে!' : '✓ Game status and config updated!');
+    } else {
+      alert(res.error || 'Failed to update game status config');
     }
   };
 
@@ -763,15 +1014,21 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
     }
   };
 
+  const pendingWithdrawalsCount = transactions.filter(t => (t.type === 'withdraw' || t.type === 'DEMO_WITHDRAWAL') && t.status === 'pending').length;
+  const pendingDepositsCount = transactions.filter(t => (t.type === 'deposit' || t.type === 'DEMO_TOPUP') && t.status === 'pending').length;
+
   const navTabs = [
     { id: 'overview' as TabType, labelBn: 'ড্যাশবোর্ড', labelEn: 'Dashboard', icon: LayoutDashboard },
+    { id: 'withdrawals' as TabType, labelBn: 'উইথড্র রিকোয়েস্ট', labelEn: 'Withdrawals', icon: ArrowUpRight, badge: pendingWithdrawalsCount },
+    { id: 'deposits' as TabType, labelBn: 'ডিপোজিট রিকোয়েস্ট', labelEn: 'Deposits', icon: ArrowDownRight, badge: pendingDepositsCount },
+    { id: 'transactions' as TabType, labelBn: 'ট্রানজেকশন লেজার', labelEn: 'Ledger', icon: Wallet },
+    { id: 'audit_logs' as TabType, labelBn: 'অডিট লগ', labelEn: 'Audit Logs', icon: ShieldCheck },
     { id: 'banners' as TabType, labelBn: 'ব্যানার ও কভার', labelEn: 'Banners & Cover', icon: ImageIcon },
     { id: 'home_ads' as TabType, labelBn: 'হোম অ্যাড', labelEn: 'Home Ads', icon: Megaphone },
     { id: 'games' as TabType, labelBn: 'গেম ও ছবি', labelEn: 'Games & Covers', icon: Gamepad2 },
     { id: 'payment_methods' as TabType, labelBn: 'পেমেন্ট মেথড', labelEn: 'Payment Methods', icon: CreditCard },
     { id: 'promotions' as TabType, labelBn: 'প্রমোশন অফার', labelEn: 'Promotions', icon: Gift },
     { id: 'announcements' as TabType, labelBn: 'স্ক্রোল ঘোষণা', labelEn: 'Announcements', icon: VolumeIcon },
-    { id: 'transactions' as TabType, labelBn: 'ক্যাশিয়ার রিকোয়েস্ট', labelEn: 'Transactions', icon: DollarSign, badge: transactions.filter(t => t.status === 'pending').length },
     { id: 'signal_management' as TabType, labelBn: 'গেম সিগন্যাল', labelEn: 'Game Signal', icon: Radio },
     { id: 'users' as TabType, labelBn: 'ইউজার মেম্বার', labelEn: 'Users List', icon: Users },
     { id: 'settings' as TabType, labelBn: 'ওয়েবসাইট সেটিংস', labelEn: 'Site Settings', icon: SettingsIcon },
@@ -1397,62 +1654,547 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
             </div>
           )}
 
-          {/* TAB 4: GAMES & GAME IMAGES */}
+          {/* TAB 4: GAMES & GAME IMAGES & SERVER ERROR CONTROLS */}
           {activeTab === 'games' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
                 <div>
-                  <h2 className="text-base sm:text-lg font-black font-chakra text-slate-900">
-                    {lang === 'bn' ? 'গেম ও গেমের কভার ছবি' : 'Games & Game Covers Management'}
+                  <h2 className="text-base sm:text-lg font-black font-chakra text-slate-900 flex items-center gap-2">
+                    <span>{lang === 'bn' ? 'গেম ম্যানেজমেন্ট ও সার্ভার এরর / মেইনটেনেন্স কন্ট্রোল' : 'Game Management & Server Error Controls'}</span>
+                    <span className="px-2 py-0.5 bg-rose-100 text-rose-700 text-[10px] font-mono font-black rounded-full">
+                      500 Protection Active
+                    </span>
                   </h2>
                   <p className="text-xs text-slate-500">
-                    {lang === 'bn' ? 'ক্যাসিনো গেমের তালিকা, কভার ছবি আপলোড ও ক্যাটাগরি নিয়ন্ত্রণ করুন।' : 'Upload custom game covers to Firebase Storage.'}
+                    {lang === 'bn' 
+                      ? 'যেকোনো গেমকে তাৎক্ষণিকভাবে "Server Error" বা "Maintenance" মোডে নিন। সার্ভার লেভেলে ব্লক করা হবে।' 
+                      : 'Real-time server-side game status controls. Instantly block game access with custom error notices.'}
                   </p>
                 </div>
                 <button
-                  onClick={() => setEditingGame({ status: 'active', category: 'slots', order: games.length + 1, rating: '9.8' })}
-                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-chakra font-black text-xs rounded-xl shadow-xs flex items-center gap-1.5"
+                  onClick={() => setEditingGame({ status: 'ACTIVE', category: 'slots', order: games.length + 1, rating: 9.8 })}
+                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-chakra font-black text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 shrink-0"
                 >
                   <Plus size={15} />
-                  <span>{lang === 'bn' ? 'নতুন গেম' : 'Add Game'}</span>
+                  <span>{lang === 'bn' ? 'নতুন গেম যোগ' : 'Add Game'}</span>
                 </button>
               </div>
 
-              {/* Games Grid (3 columns on mobile) */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {games.map((g) => (
-                  <div key={g.id} className="bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between shadow-xs">
-                    <div className="relative aspect-[4/3] bg-slate-200">
-                      <img src={g.imageUrl} alt={g.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      <div className="absolute top-1.5 left-1.5 bg-slate-900/80 text-amber-400 text-[8px] font-black px-1.5 py-0.5 rounded uppercase">
-                        {g.category}
-                      </div>
-                    </div>
+              {/* Status Overview Statistics Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <button 
+                  onClick={() => setGameStatusFilter('ALL')}
+                  className={`p-3 rounded-2xl border text-left transition-all ${
+                    gameStatusFilter === 'ALL' ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  <div className="text-[10px] font-bold opacity-70 uppercase tracking-wider">{lang === 'bn' ? 'মোট গেম' : 'Total Games'}</div>
+                  <div className="text-lg font-black font-chakra mt-0.5">{games.length}</div>
+                </button>
 
-                    <div className="p-2.5 space-y-1.5">
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-900 truncate">{g.titleBn || g.title}</h4>
-                        <span className="text-[10px] text-slate-400 font-mono block truncate">{g.provider || 'TK333'}</span>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-1 border-t border-slate-200 text-xs">
-                        <button
-                          onClick={() => setEditingGame(g)}
-                          className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteGame(g)}
-                          className="p-1 text-rose-600 hover:bg-rose-50 rounded"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
+                <button 
+                  onClick={() => setGameStatusFilter('ACTIVE')}
+                  className={`p-3 rounded-2xl border text-left transition-all ${
+                    gameStatusFilter === 'ACTIVE' ? 'bg-emerald-600 text-white border-emerald-600 shadow-md' : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                  }`}
+                >
+                  <div className="text-[10px] font-bold opacity-80 uppercase tracking-wider flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    <span>{lang === 'bn' ? 'সক্রিয় (ACTIVE)' : 'Active Games'}</span>
                   </div>
+                  <div className="text-lg font-black font-chakra mt-0.5">
+                    {games.filter(g => normalizeGameStatus(g.status) === 'ACTIVE').length}
+                  </div>
+                </button>
+
+                <button 
+                  onClick={() => setGameStatusFilter('SERVER_ERROR')}
+                  className={`p-3 rounded-2xl border text-left transition-all ${
+                    gameStatusFilter === 'SERVER_ERROR' ? 'bg-rose-600 text-white border-rose-600 shadow-md' : 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100'
+                  }`}
+                >
+                  <div className="text-[10px] font-bold opacity-80 uppercase tracking-wider flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
+                    <span>{lang === 'bn' ? 'সার্ভার এরর (ERROR)' : 'Server Error'}</span>
+                  </div>
+                  <div className="text-lg font-black font-chakra mt-0.5">
+                    {games.filter(g => normalizeGameStatus(g.status) === 'SERVER_ERROR').length}
+                  </div>
+                </button>
+
+                <button 
+                  onClick={() => setGameStatusFilter('MAINTENANCE')}
+                  className={`p-3 rounded-2xl border text-left transition-all ${
+                    gameStatusFilter === 'MAINTENANCE' ? 'bg-amber-500 text-white border-amber-500 shadow-md' : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                  }`}
+                >
+                  <div className="text-[10px] font-bold opacity-80 uppercase tracking-wider flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                    <span>{lang === 'bn' ? 'রক্ষণাবেক্ষণ (MAINT)' : 'Maintenance'}</span>
+                  </div>
+                  <div className="text-lg font-black font-chakra mt-0.5">
+                    {games.filter(g => normalizeGameStatus(g.status) === 'MAINTENANCE').length}
+                  </div>
+                </button>
+              </div>
+
+              {/* Filter Tabs */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 text-xs font-bold">
+                {(['ALL', 'ACTIVE', 'SERVER_ERROR', 'MAINTENANCE', 'DISABLED'] as const).map((st) => (
+                  <button
+                    key={st}
+                    onClick={() => setGameStatusFilter(st)}
+                    className={`px-3 py-1.5 rounded-xl border transition-all shrink-0 ${
+                      gameStatusFilter === st
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    {st === 'ALL' && (lang === 'bn' ? 'সবগুলো' : 'All Games')}
+                    {st === 'ACTIVE' && (lang === 'bn' ? '🟢 সক্রিয় (Active)' : '🟢 Active')}
+                    {st === 'SERVER_ERROR' && (lang === 'bn' ? '🔴 সার্ভার এরর (Server Error)' : '🔴 Server Error')}
+                    {st === 'MAINTENANCE' && (lang === 'bn' ? '🟠 রক্ষণাবেক্ষণ (Maintenance)' : '🟠 Maintenance')}
+                    {st === 'DISABLED' && (lang === 'bn' ? '⚪ নিষ্ক্রিয় (Disabled)' : '⚪ Disabled')}
+                  </button>
                 ))}
               </div>
+
+              {/* Games Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+                {games
+                  .filter((g) => {
+                    if (gameStatusFilter === 'ALL') return true;
+                    return normalizeGameStatus(g.status) === gameStatusFilter;
+                  })
+                  .map((g) => {
+                    const normStatus = normalizeGameStatus(g.status);
+                    const isErr = normStatus === 'SERVER_ERROR';
+                    const isMaint = normStatus === 'MAINTENANCE';
+                    const isDis = normStatus === 'DISABLED';
+                    const isAct = normStatus === 'ACTIVE';
+                    const isUpdating = updatingGameStatusId === g.id;
+
+                    return (
+                      <div 
+                        key={g.id} 
+                        className={`bg-white border rounded-2xl overflow-hidden flex flex-col justify-between shadow-xs transition-all ${
+                          isErr 
+                            ? 'border-rose-300 ring-2 ring-rose-500/20' 
+                            : isMaint 
+                            ? 'border-amber-300 ring-2 ring-amber-500/20' 
+                            : 'border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="relative aspect-[16/10] bg-slate-200">
+                          <img src={g.imageUrl} alt={g.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          
+                          {/* Category Badge */}
+                          <div className="absolute top-2 left-2 bg-slate-900/80 text-amber-400 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider backdrop-blur-xs">
+                            {g.category}
+                          </div>
+
+                          {/* Prominent Status Overlay Badge */}
+                          <div className={`absolute top-2 right-2 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-md ${
+                            isAct 
+                              ? 'bg-emerald-500 text-white' 
+                              : isErr 
+                              ? 'bg-rose-600 text-white animate-pulse' 
+                              : isMaint 
+                              ? 'bg-amber-500 text-white' 
+                              : 'bg-slate-700 text-slate-200'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${isAct ? 'bg-emerald-200' : 'bg-white'}`} />
+                            <span>{normStatus}</span>
+                          </div>
+
+                          {/* Reason strip if server error or maintenance */}
+                          {(isErr || isMaint) && g.statusReason && (
+                            <div className="absolute bottom-0 inset-x-0 bg-slate-950/85 backdrop-blur-xs text-white text-[9px] p-1.5 font-mono truncate">
+                              ⚠️ {g.statusReason}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="p-3 space-y-2.5 flex-1 flex flex-col justify-between">
+                          <div>
+                            <div className="flex items-start justify-between gap-1">
+                              <h4 className="font-bold text-xs text-slate-900 truncate">{g.titleBn || g.title}</h4>
+                              <span className="text-[10px] text-slate-400 font-mono shrink-0">{g.provider || 'TK333'}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-400 font-mono block truncate">ID: {g.id}</span>
+                          </div>
+
+                          {/* Status Management: Current Status, Change Status Selector, and SAVE Button */}
+                          <div className="space-y-2 pt-2 border-t border-slate-100">
+                            <div className="flex items-center justify-between text-[10px] font-bold text-slate-600">
+                              <span>{lang === 'bn' ? 'বর্তমান স্ট্যাটাস:' : 'Current Status:'}</span>
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${
+                                isAct ? 'bg-emerald-100 text-emerald-800' :
+                                isErr ? 'bg-rose-100 text-rose-800 animate-pulse' :
+                                isMaint ? 'bg-amber-100 text-amber-800' :
+                                'bg-slate-200 text-slate-800'
+                              }`}>
+                                {isAct ? '🟢 ACTIVE' : isErr ? '🔴 SERVER ERROR' : isMaint ? '🟠 MAINTENANCE' : '⚫ DISABLED'}
+                              </span>
+                            </div>
+
+                            {/* Dropdown Change Status [ Change Status ▼ ] and [ SAVE ] */}
+                            <div className="flex items-center gap-1.5">
+                              <div className="relative flex-1">
+                                <select
+                                  value={cardSelectedStatus[g.id] || normStatus}
+                                  onChange={(e) => setCardSelectedStatus(prev => ({ ...prev, [g.id]: e.target.value as NormalizedGameStatus }))}
+                                  className="w-full px-2 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-[10px] font-bold text-slate-800 outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                                >
+                                  <option value="ACTIVE">🟢 ACTIVE</option>
+                                  <option value="MAINTENANCE">🟠 MAINTENANCE</option>
+                                  <option value="SERVER_ERROR">🔴 SERVER ERROR</option>
+                                  <option value="DISABLED">⚫ DISABLED</option>
+                                </select>
+                              </div>
+                              <button
+                                type="button"
+                                disabled={isUpdating}
+                                onClick={() => handleSaveCardStatus(g)}
+                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-chakra font-black text-[10px] rounded-xl shadow-xs transition-all active:scale-95 disabled:opacity-50 shrink-0"
+                              >
+                                {isUpdating ? <Loader2 size={11} className="animate-spin" /> : (lang === 'bn' ? 'সংরক্ষণ' : 'SAVE')}
+                              </button>
+                            </div>
+
+                            {/* Quick 1-Click Action Buttons */}
+                            <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                              {/* Quick 1-Click Server Error Button */}
+                              {normStatus !== 'SERVER_ERROR' ? (
+                                <button
+                                  disabled={isUpdating}
+                                  onClick={() => {
+                                    setQuickErrorGame(g);
+                                    setQuickErrorReason('RNG engine calibration & technical maintenance');
+                                  }}
+                                  className="py-1.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-[10px] font-black flex items-center justify-center gap-1 transition-all active:scale-95 disabled:opacity-50"
+                                  title="1-Click Server Error Mode"
+                                >
+                                  <ServerCrash size={12} className="text-rose-600" />
+                                  <span>{lang === 'bn' ? '🔴 সার্ভার এরর' : '🔴 Server Error'}</span>
+                                </button>
+                              ) : (
+                                <div className="py-1.5 px-2 bg-rose-600 text-white rounded-xl text-[10px] font-black flex items-center justify-center gap-1 shadow-xs">
+                                  <ServerCrash size={12} />
+                                  <span>{lang === 'bn' ? 'এরর চালু আছে' : 'ERROR ACTIVE'}</span>
+                                </div>
+                              )}
+
+                              {/* Quick 1-Click Reactivate Button */}
+                              {normStatus !== 'ACTIVE' ? (
+                                <button
+                                  disabled={isUpdating}
+                                  onClick={() => handleQuickActivateGame(g)}
+                                  className="py-1.5 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-[10px] font-black flex items-center justify-center gap-1 transition-all active:scale-95 disabled:opacity-50"
+                                  title="Reactivate Game"
+                                >
+                                  {isUpdating ? <Loader2 size={12} className="animate-spin" /> : <ShieldCheck size={12} className="text-emerald-600" />}
+                                  <span>{lang === 'bn' ? '🟢 সচল করুন' : '🟢 Activate'}</span>
+                                </button>
+                              ) : (
+                                <div className="py-1.5 px-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-[10px] font-black flex items-center justify-center gap-1">
+                                  <ShieldCheck size={12} className="text-emerald-600" />
+                                  <span>{lang === 'bn' ? 'সক্রিয়' : 'ONLINE'}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Advanced Config / Edit / Delete Row */}
+                            <div className="flex items-center justify-between gap-1 pt-1 text-xs">
+                              <button
+                                onClick={() => handleOpenStatusConfig(g)}
+                                className="flex-1 py-1 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors"
+                              >
+                                <Wrench size={11} className="text-slate-500" />
+                                <span>{lang === 'bn' ? 'কাস্টম নোটিশ' : 'Notice Config'}</span>
+                              </button>
+
+                              <button
+                                onClick={() => setEditingGame(g)}
+                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                title="Edit Game"
+                              >
+                                <Edit3 size={13} />
+                              </button>
+
+                              <button
+                                onClick={() => handleDeleteGame(g)}
+                                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                title="Delete Game"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+
+              {/* QUICK SERVER ERROR CONFIRMATION MODAL */}
+              <AnimatePresence>
+                {quickErrorGame && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-xs">
+                    <motion.div
+                      initial={{ scale: 0.94, opacity: 0, y: 10 }}
+                      animate={{ scale: 1, opacity: 1, y: 0 }}
+                      exit={{ scale: 0.94, opacity: 0, y: 10 }}
+                      className="bg-white border-2 border-rose-300 rounded-3xl p-5 sm:p-6 w-full max-w-md shadow-2xl space-y-4"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="w-12 h-12 rounded-2xl bg-rose-100 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
+                          <ServerCrash size={26} />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-chakra font-black text-base text-rose-950">
+                            {lang === 'bn' 
+                              ? `"${quickErrorGame.titleBn || quickErrorGame.title}" সার্ভার এরর মোডে নিবেন?` 
+                              : `Put ${quickErrorGame.title || quickErrorGame.name || 'Game'} into Server Error mode?`}
+                          </h3>
+                          <p className="text-xs text-rose-700 font-medium mt-0.5">
+                            {lang === 'bn'
+                              ? 'পুনরায় সক্রিয় না করা পর্যন্ত ব্যবহারকারীরা এই গেমটি খুলতে পারবেন না।'
+                              : 'Users will not be able to open this game until it is activated again.'}
+                          </p>
+                        </div>
+                        <button onClick={() => setQuickErrorGame(null)} className="p-1 text-slate-400 hover:text-slate-700">
+                          <X size={18} />
+                        </button>
+                      </div>
+
+                      {/* Security & Access Warning Box */}
+                      <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl space-y-1.5 text-xs text-rose-900">
+                        <div className="font-black flex items-center gap-1.5 text-rose-800">
+                          <ShieldAlert size={15} />
+                          <span>{lang === 'bn' ? 'সার্ভার-লেভেল সুরক্ষা সক্রিয় হবে' : 'Server-Side Access Rejection'}</span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-rose-700">
+                          {lang === 'bn'
+                            ? 'এই গেমটি সার্ভার এরর মোডে নিলে, কোনো ইউজার সরাসরি লিঙ্ক বা বুকমার্ক দিয়েও ঢুকতে পারবে না। সার্ভার 500 স্ক্রিন ও সুরক্ষিত ওয়ালেট নোটিশ প্রদর্শন করবে।'
+                            : 'Direct URL visits, bets, and API calls for this game will be strictly rejected. Users will see the 500 Server Error maintenance screen.'}
+                        </p>
+                      </div>
+
+                      {/* Reason Input */}
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-bold text-slate-700 block">
+                          {lang === 'bn' ? 'এরর এর কারণ / ডিসপ্লে বার্তা:' : 'Error Reason / Display Notice:'}
+                        </label>
+                        <input
+                          type="text"
+                          value={quickErrorReason}
+                          onChange={(e) => setQuickErrorReason(e.target.value)}
+                          placeholder="RNG engine calibration & technical maintenance"
+                          className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                        />
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {['RNG Engine Calibration', 'Emergency Server Maintenance', 'Provider API Downtime', 'Security Audit Check'].map((quick) => (
+                            <button
+                              key={quick}
+                              type="button"
+                              onClick={() => setQuickErrorReason(quick)}
+                              className="px-2 py-0.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 border border-slate-200 text-slate-600 rounded text-[9px] font-bold"
+                            >
+                              + {quick}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="pt-2 flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setQuickErrorGame(null)}
+                          className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl"
+                        >
+                          {lang === 'bn' ? 'বাতিল (CANCEL)' : 'CANCEL'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={updatingGameStatusId !== null}
+                          onClick={handleConfirmQuickServerError}
+                          className="px-5 py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-chakra font-black text-xs rounded-xl shadow-md flex items-center gap-1.5 disabled:opacity-50"
+                        >
+                          {updatingGameStatusId ? <Loader2 size={14} className="animate-spin" /> : <ServerCrash size={14} />}
+                          <span>{lang === 'bn' ? '🔴 নিশ্চিত করুন (CONFIRM)' : '🔴 CONFIRM'}</span>
+                        </button>
+                      </div>
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
+
+              {/* ADVANCED STATUS & MAINTENANCE CONFIG MODAL */}
+              <AnimatePresence>
+                {statusConfigGame && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+                    <motion.div
+                      initial={{ scale: 0.95, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.95, opacity: 0 }}
+                      className="bg-white border border-slate-200 rounded-3xl p-5 sm:p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto no-scrollbar space-y-4"
+                    >
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <Wrench className="text-amber-600" size={20} />
+                          <div>
+                            <h3 className="font-chakra font-black text-sm text-slate-900">
+                              {lang === 'bn' ? 'গেম স্ট্যাটাস ও মেইনটেনেন্স নোটিশ কনফিগ' : 'Game Status & Maintenance Settings'}
+                            </h3>
+                            <span className="text-[10px] text-slate-500 font-bold">
+                              {statusConfigGame.titleBn || statusConfigGame.title} (ID: {statusConfigGame.id})
+                            </span>
+                          </div>
+                        </div>
+                        <button onClick={() => setStatusConfigGame(null)} className="p-1 text-slate-400 hover:text-slate-700">
+                          <X size={18} />
+                        </button>
+                      </div>
+
+                      <form onSubmit={handleSaveStatusConfig} className="space-y-3.5">
+                        {/* Status Select Buttons */}
+                        <div className="space-y-1.5">
+                          <label className="text-[11px] font-bold text-slate-700 block">
+                            {lang === 'bn' ? 'গেমের বর্তমান স্ট্যাটাস সিলেক্ট করুন:' : 'Select Authoritative Game Status:'}
+                          </label>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                            {[
+                              { id: 'ACTIVE', label: '🟢 ACTIVE', desc: 'সক্রিয় গেম' },
+                              { id: 'SERVER_ERROR', label: '🔴 SERVER ERROR', desc: 'সার্ভার এরর 500' },
+                              { id: 'MAINTENANCE', label: '🟠 MAINTENANCE', desc: 'রক্ষণাবেক্ষণ' },
+                              { id: 'DISABLED', label: '⚪ DISABLED', desc: 'বন্ধ' }
+                            ].map((opt) => (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                onClick={() => setStatusConfigForm({ ...statusConfigForm, status: opt.id as NormalizedGameStatus })}
+                                className={`p-2 rounded-xl border text-center font-chakra text-xs font-black transition-all ${
+                                  statusConfigForm.status === opt.id
+                                    ? opt.id === 'SERVER_ERROR'
+                                      ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                                      : opt.id === 'MAINTENANCE'
+                                      ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                                      : opt.id === 'ACTIVE'
+                                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                                      : 'bg-slate-800 text-white border-slate-800 shadow-sm'
+                                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                <div>{opt.label}</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Status Reason */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-600">
+                            {lang === 'bn' ? 'স্ট্যাটাস পরিবর্তনের কারণ / ইন্টারনাল নোট:' : 'Status Reason / Internal Note:'}
+                          </label>
+                          <input
+                            type="text"
+                            value={statusConfigForm.reason}
+                            onChange={(e) => setStatusConfigForm({ ...statusConfigForm, reason: e.target.value })}
+                            placeholder="e.g., Scheduled server patch or core RNG calibration"
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900"
+                          />
+                        </div>
+
+                        {/* Maintenance Screen Customizations */}
+                        <div className="p-3 bg-amber-50/60 border border-amber-200 rounded-2xl space-y-3">
+                          <div className="text-[11px] font-black text-amber-900 flex items-center gap-1.5">
+                            <Sparkles size={14} className="text-amber-600" />
+                            <span>{lang === 'bn' ? 'ইউজার স্ক্রিনে প্রদর্শিত কাস্টম নোটিশ (ঐচ্ছিক):' : 'Maintenance Screen Notice Customizations (Optional):'}</span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-600">কাস্টম শিরোনাম (বাংলা):</label>
+                              <input
+                                type="text"
+                                value={statusConfigForm.maintenanceTitleBn}
+                                onChange={(e) => setStatusConfigForm({ ...statusConfigForm, maintenanceTitleBn: e.target.value })}
+                                placeholder="গেম সার্ভার সংযোগ বিচ্ছিন্ন"
+                                className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs text-slate-900"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-600">Custom Title (English):</label>
+                              <input
+                                type="text"
+                                value={statusConfigForm.maintenanceTitle}
+                                onChange={(e) => setStatusConfigForm({ ...statusConfigForm, maintenanceTitle: e.target.value })}
+                                placeholder="Game Server Offline"
+                                className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs text-slate-900"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-600">বিস্তারিত বিবরণ (বাংলা / English):</label>
+                            <textarea
+                              rows={2}
+                              value={statusConfigForm.maintenanceDescription}
+                              onChange={(e) => setStatusConfigForm({ ...statusConfigForm, maintenanceDescription: e.target.value })}
+                              placeholder="কারিগরি ত্রুটির কারণে এই গেমটির সার্ভার সাময়িকভাবে বিচ্ছিন্ন রয়েছে।"
+                              className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs text-slate-900"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-600">আনুমানিক সময় (Estimated Duration):</label>
+                              <input
+                                type="text"
+                                value={statusConfigForm.maintenanceEstimatedTime}
+                                onChange={(e) => setStatusConfigForm({ ...statusConfigForm, maintenanceEstimatedTime: e.target.value })}
+                                placeholder="১৫ মিনিট / 15 mins"
+                                className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs text-slate-900"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-bold text-slate-600">বাটন টেক্সট (Button Text):</label>
+                              <input
+                                type="text"
+                                value={statusConfigForm.maintenanceButtonText}
+                                onChange={(e) => setStatusConfigForm({ ...statusConfigForm, maintenanceButtonText: e.target.value })}
+                                placeholder="লবিতে ফিরে যান / Back to Lobby"
+                                className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs text-slate-900"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Modal Action Buttons */}
+                        <div className="pt-2 flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setStatusConfigGame(null)}
+                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl"
+                          >
+                            {lang === 'bn' ? 'বাতিল' : 'Cancel'}
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={updatingGameStatusId !== null}
+                            className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-chakra font-black text-xs rounded-xl shadow-xs flex items-center gap-1.5"
+                          >
+                            {updatingGameStatusId ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                            <span>{lang === 'bn' ? 'সংরক্ষণ ও প্রয়োগ' : 'Save & Apply'}</span>
+                          </button>
+                        </div>
+                      </form>
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
 
               {/* Edit Game Modal */}
               <AnimatePresence>
@@ -1539,6 +2281,21 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                             placeholder="সুপার এইস"
                             className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900"
                           />
+                        </div>
+
+                        {/* Status Selector */}
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-600">গেম সার্ভার স্ট্যাটাস:</label>
+                          <select
+                            value={normalizeGameStatus(editingGame.status)}
+                            onChange={(e) => setEditingGame({ ...editingGame, status: e.target.value as any })}
+                            className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-bold"
+                          >
+                            <option value="ACTIVE">🟢 ACTIVE (সক্রিয়)</option>
+                            <option value="SERVER_ERROR">🔴 SERVER ERROR (সার্ভার এরর 500)</option>
+                            <option value="MAINTENANCE">🟠 MAINTENANCE (রক্ষণাবেক্ষণ)</option>
+                            <option value="DISABLED">⚪ DISABLED (নিষ্ক্রিয়)</option>
+                          </select>
                         </div>
 
                         <div className="grid grid-cols-2 gap-2">
@@ -2034,71 +2791,39 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
             </div>
           )}
 
-          {/* TAB 8: TRANSACTIONS (Deposit & Withdraw approvals) */}
+          {/* TAB: WITHDRAWALS */}
+          {activeTab === 'withdrawals' && (
+            <WithdrawalsTab
+              transactions={transactions}
+              lang={lang}
+              adminEmail={user?.email || 'admin@tk333.vip'}
+              showToast={showToast}
+            />
+          )}
+
+          {/* TAB: DEPOSITS */}
+          {activeTab === 'deposits' && (
+            <DepositsTab
+              transactions={transactions}
+              lang={lang}
+              adminEmail={user?.email || 'admin@tk333.vip'}
+              showToast={showToast}
+            />
+          )}
+
+          {/* TAB: TRANSACTIONS LEDGER */}
           {activeTab === 'transactions' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div>
-                  <h2 className="text-base sm:text-lg font-black font-chakra text-slate-900">
-                    {lang === 'bn' ? 'ক্যাশিয়ার রিকোয়েস্ট ও অনুমোদন' : 'Deposit & Withdrawal Approvals'}
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    {lang === 'bn' ? 'ডিপোজিট ও উইথড্র রিকোয়েস্ট এক ক্লিকে অনুমোদন বা বাতিল করুন।' : 'Verify and process user deposit and withdrawal requests.'}
-                  </p>
-                </div>
-              </div>
+            <TransactionsLedgerTab
+              transactions={transactions}
+              lang={lang}
+            />
+          )}
 
-              {/* Transactions List */}
-              <div className="space-y-2.5">
-                {transactions.map((tx) => (
-                  <div key={tx.id} className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
-                          tx.type === 'deposit' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
-                        }`}>
-                          {tx.type === 'deposit' ? 'ডিপোজিট' : 'উইথড্র'} • {tx.method?.toUpperCase()}
-                        </span>
-                        <span className="font-rajdhani font-black text-sm text-slate-900">৳{tx.amount?.toLocaleString()}</span>
-                        <span className={`text-[10px] font-bold ${
-                          tx.status === 'approved' ? 'text-emerald-600' : tx.status === 'rejected' ? 'text-rose-600' : 'text-amber-600 font-black'
-                        }`}>
-                          ● {tx.status}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-slate-600 flex items-center gap-3">
-                        <span>ইউজার: <b>{tx.userName || 'Member'}</b></span>
-                        <span>নম্বর: <b>{tx.senderNumber || tx.userPhone}</b></span>
-                        {tx.transactionId && <span>TrxID: <b className="font-mono">{tx.transactionId}</b></span>}
-                      </div>
-                    </div>
-
-                    {tx.status === 'pending' && (
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          onClick={() => handleTransactionAction(tx, 'approved')}
-                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1"
-                        >
-                          <CheckCircle2 size={13} /> {lang === 'bn' ? 'অনুমোদন' : 'Approve'}
-                        </button>
-                        <button
-                          onClick={() => handleTransactionAction(tx, 'rejected')}
-                          className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold text-xs rounded-xl flex items-center gap-1"
-                        >
-                          <XCircle size={13} /> {lang === 'bn' ? 'বাতিল' : 'Reject'}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {transactions.length === 0 && (
-                  <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200 text-slate-400 text-xs">
-                    {lang === 'bn' ? 'কোনো ট্রানজেকশন রিকোয়েস্ট নেই।' : 'No transaction requests found.'}
-                  </div>
-                )}
-              </div>
-            </div>
+          {/* TAB: AUDIT LOGS */}
+          {activeTab === 'audit_logs' && (
+            <AuditLogsTab
+              lang={lang}
+            />
           )}
 
           {/* TAB 9: USERS LIST */}

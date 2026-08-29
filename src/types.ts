@@ -18,19 +18,54 @@ export interface UserData {
   createdAt?: any;
 }
 
+export type TransactionType = 
+  | 'deposit' 
+  | 'withdraw' 
+  | 'DEMO_TOPUP' 
+  | 'DEMO_BONUS' 
+  | 'GAME_STAKE' 
+  | 'GAME_WIN' 
+  | 'DEMO_WITHDRAWAL';
+
+export type TransactionStatus = 
+  | 'pending' 
+  | 'approved' 
+  | 'rejected' 
+  | 'cancelled' 
+  | 'settled';
+
 export interface Transaction {
   id: string;
   uid: string;
-  type: 'deposit' | 'withdraw';
-  method: 'nagad' | 'bkash' | 'rocket';
-  amount: number;
-  status: 'pending' | 'approved' | 'rejected';
-  senderNumber?: string;
-  transactionId?: string;
-  createdAt: string;
-  processedAt?: string;
   userName?: string;
   userPhone?: string;
+  type: TransactionType;
+  amount: number;
+  currency?: string;
+  previousBalance?: number;
+  newBalance?: number;
+  status: TransactionStatus;
+  method?: 'nagad' | 'bkash' | 'rocket' | 'upay' | 'demo' | string;
+  senderNumber?: string;
+  accountIdentifier?: string;
+  transactionId?: string;
+  referenceId?: string;
+  gameName?: string;
+  note?: string;
+  createdAt: string;
+  processedAt?: string;
+  processedBy?: string;
+}
+
+export interface AdminAuditLog {
+  id: string;
+  adminEmail: string;
+  action: string;
+  targetId?: string;
+  targetType?: string;
+  details?: string;
+  metadata?: Record<string, any>;
+  timestamp: string;
 }
 
 export interface Bet {
@@ -86,6 +121,17 @@ export interface CategoryItem {
   isActive?: boolean;
 }
 
+export type GameStatus = 
+  | 'ACTIVE' 
+  | 'MAINTENANCE' 
+  | 'SERVER_ERROR' 
+  | 'DISABLED' 
+  | 'active' 
+  | 'maintenance' 
+  | 'server_error' 
+  | 'disabled' 
+  | 'inactive';
+
 export interface GameItem {
   id: string;
   name?: string;
@@ -102,8 +148,20 @@ export interface GameItem {
   gameUrl?: string;
   storagePath?: string;
   route?: string;
-  status?: 'active' | 'inactive' | 'maintenance';
+  status?: GameStatus;
+  gameStatus?: GameStatus;
   isActive?: boolean;
+  isVisible?: boolean;
+  statusReason?: string;
+  statusUpdatedAt?: string;
+  statusUpdatedBy?: string;
+  maintenanceTitle?: string;
+  maintenanceTitleBn?: string;
+  maintenanceDescription?: string;
+  maintenanceDescriptionBn?: string;
+  maintenanceEstimatedTime?: string;
+  maintenanceButtonText?: string;
+  maintenanceButtonTextBn?: string;
   featured?: boolean;
   popular?: boolean;
   hot?: boolean;

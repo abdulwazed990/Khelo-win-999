@@ -3,6 +3,9 @@ import { X, History, Minus, Plus, Volume2, VolumeX } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { haptics } from '../utils/haptics';
 import { broadcastLiveGameRound, generateRoundId, subscribeToRoundsHistory } from '../services/aviatorSignalService';
+import { db, handleFirestoreError, OperationType } from '../firebase';
+import { doc, updateDoc, increment, addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { CURRENCY_SYMBOL, formatBDT } from '../config/currency';
 
 interface AviatorJetGameProps {
   user: any;
@@ -23,7 +26,7 @@ interface BetState {
 const PLANE_IMAGE_URL = "https://static.vecteezy.com/system/resources/previews/050/024/396/non_2x/3d-cartoon-happy-blue-and-yellow-jet-fighter-military-machine-illustration-for-children-vector.jpg";
 
 export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGameProps) {
-  const [balance, setBalance] = useState(3000);
+  const [balance, setBalance] = useState(() => userData?.balance ?? 500);
   const [gameState, setGameState] = useState<"WAITING" | "IN_FLIGHT" | "CRASHED">("WAITING");
   const [multiplier, setMultiplier] = useState(1);
   const [countdown, setCountdown] = useState(5);
@@ -34,11 +37,17 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
   const [isMuted, setIsMuted] = useState(false);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
 
+  useEffect(() => {
+    if (userData?.balance !== undefined) {
+      setBalance(userData.balance);
+    }
+  }, [userData?.balance]);
+
   const [bet1, setBet1] = useState<BetState>({
-    amount: 10, isPlaced: false, isCashedOut: false, payout: 0, autoCashOut: 2, isAutoBet: false, isAutoCashOut: false
+    amount: 50, isPlaced: false, isCashedOut: false, payout: 0, autoCashOut: 2, isAutoBet: false, isAutoCashOut: false
   });
   const [bet2, setBet2] = useState<BetState>({
-    amount: 10, isPlaced: false, isCashedOut: false, payout: 0, autoCashOut: 2, isAutoBet: false, isAutoCashOut: false
+    amount: 100, isPlaced: false, isCashedOut: false, payout: 0, autoCashOut: 2, isAutoBet: false, isAutoCashOut: false
   });
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -344,7 +353,7 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
     return () => clearInterval(interval);
   }, [gameState, countdown]);
 
-  const placeBet = (b: number) => {
+  const placeBet = async (b: number) => {
     if (gameState !== "WAITING" || countdown <= 2) return;
     const A = b === 1 ? bet1 : bet2;
     if (balance < A.amount) {
@@ -352,12 +361,23 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
       return;
     }
     haptics.medium();
-    setBalance(q => q - A.amount);
+    setBalance(q => Math.max(0, q - A.amount));
     if (b === 1) setBet1(q => ({ ...q, isPlaced: true }));
     else setBet2(q => ({ ...q, isPlaced: true }));
+
+    if (user?.uid) {
+      try {
+        await updateDoc(doc(db, 'users', user.uid), {
+          balance: increment(-A.amount),
+          turnover: increment(A.amount)
+        });
+      } catch (err) {
+        console.error("Aviator bet error:", err);
+      }
+    }
   };
 
-  const cashOut = (b: number, A?: number) => {
+  const cashOut = async (b: number, A?: number) => {
     if (gameState !== "IN_FLIGHT") return;
     const q = A || multiplier;
     const X = b === 1 ? bet1CashedOutRef : bet2CashedOutRef;
@@ -368,11 +388,29 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
     X.current = true;
     haptics.win();
     if (!isMuted) cashOutSoundRef.current?.play().catch(() => {});
-    const it = et.amount * q;
+    const it = Math.round(et.amount * q * 100) / 100;
     setBalance(Mt => Mt + it);
     setCashoutPopup({ amount: it, mult: q });
     at(Mt => ({ ...Mt, isCashedOut: true, payout: it }));
     setTimeout(() => setCashoutPopup(null), 3000);
+
+    if (user?.uid) {
+      try {
+        await updateDoc(doc(db, 'users', user.uid), {
+          balance: increment(it)
+        });
+        await addDoc(collection(db, 'users', user.uid, 'gameHistory'), {
+          gameName: 'Aviator (Crash)',
+          betAmount: et.amount,
+          winAmount: it,
+          multiplier: q,
+          status: 'win',
+          createdAt: serverTimestamp()
+        });
+      } catch (err) {
+        console.error("Aviator cashout sync error:", err);
+      }
+    }
   };
 
   useEffect(() => {
@@ -624,7 +662,7 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
             {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
           </button>
           <div className="bg-[#000] px-3 sm:px-4 py-1 rounded-full border border-emerald-500/30 flex items-center gap-2">
-            <span className="text-emerald-400 font-bold text-sm sm:text-base tracking-tight">{balance.toLocaleString("en-US", { minimumFractionDigits: 2 })} USD</span>
+            <span className="text-emerald-400 font-bold text-sm sm:text-base tracking-tight">{formatBDT(balance)}</span>
           </div>
         </div>
       </header>
@@ -645,7 +683,7 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
                 </div>
                 <div className="flex gap-2">
                   <span className="text-emerald-500 font-bold">1.45x</span>
-                  <span className="text-emerald-400">145.00</span>
+                  <span className="text-emerald-400">৳145.00</span>
                 </div>
               </div>
             ))}
@@ -692,15 +730,15 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
                 >
                   <div className="text-xs font-bold uppercase tracking-widest opacity-80">You Cashed Out!</div>
                   <div className="text-2xl font-black italic">{cashoutPopup.mult.toFixed(2)}x</div>
-                  <div className="text-sm font-bold mt-1">+{cashoutPopup.amount.toFixed(2)} USD</div>
+                  <div className="text-sm font-bold mt-1">+{formatBDT(cashoutPopup.amount)}</div>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-2 gap-1 sm:gap-2 shrink-0 pb-1 sm:pb-0">
-            <BetPanel bet={bet1} setBet={setBet1} onPlace={() => placeBet(1)} onCashOut={() => cashOut(1)} gameState={gameState} countdown={countdown} multiplier={multiplier} quickAmounts={[100, 300, 700, 1000]} />
-            <BetPanel bet={bet2} setBet={setBet2} onPlace={() => placeBet(2)} onCashOut={() => cashOut(2)} gameState={gameState} countdown={countdown} multiplier={multiplier} quickAmounts={[500, 1500, 2000, 2500, 5000]} />
+            <BetPanel bet={bet1} setBet={setBet1} onPlace={() => placeBet(1)} onCashOut={() => cashOut(1)} gameState={gameState} countdown={countdown} multiplier={multiplier} quickAmounts={[50, 100, 200, 500]} />
+            <BetPanel bet={bet2} setBet={setBet2} onPlace={() => placeBet(2)} onCashOut={() => cashOut(2)} gameState={gameState} countdown={countdown} multiplier={multiplier} quickAmounts={[100, 500, 1000, 2000, 5000]} />
           </div>
         </div>
       </main>
@@ -718,18 +756,21 @@ function BetPanel({ bet, setBet, onPlace, onCashOut, gameState, countdown, multi
       <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
         <div className={`flex-1 flex flex-col gap-1.5 sm:gap-2 transition-opacity ${bet.isPlaced ? "opacity-50 pointer-events-none" : ""}`}>
           <div className="bg-black/40 rounded-lg sm:rounded-xl p-0.5 sm:p-1 flex items-center justify-between border border-white/5">
-            <button disabled={bet.isPlaced} onClick={() => { haptics.selection(); setBet((s: any) => ({ ...s, amount: Math.max(0.1, s.amount - 1) })); }} className="w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center text-gray-400 hover:text-white disabled:opacity-50">
+            <button disabled={bet.isPlaced} onClick={() => { haptics.selection(); setBet((s: any) => ({ ...s, amount: Math.max(10, s.amount - 10) })); }} className="w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center text-gray-400 hover:text-white disabled:opacity-50">
               <Minus className="w-3 h-3 sm:w-4 sm:h-4" />
             </button>
-            <input type="number" value={bet.amount} disabled={bet.isPlaced} onChange={e => setBet((s: any) => ({ ...s, amount: parseFloat(e.target.value) || 0 }))} className="bg-transparent text-center font-bold text-xs sm:text-sm w-full outline-none disabled:cursor-not-allowed" />
-            <button disabled={bet.isPlaced} onClick={() => { haptics.selection(); setBet((s: any) => ({ ...s, amount: s.amount + 1 })); }} className="w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center text-gray-400 hover:text-white disabled:opacity-50">
+            <div className="flex items-center justify-center gap-0.5 w-full">
+              <span className="text-yellow-500 font-bold text-xs">৳</span>
+              <input type="number" value={bet.amount} disabled={bet.isPlaced} onChange={e => setBet((s: any) => ({ ...s, amount: parseFloat(e.target.value) || 0 }))} className="bg-transparent text-center font-bold text-xs sm:text-sm w-16 outline-none disabled:cursor-not-allowed text-white" />
+            </div>
+            <button disabled={bet.isPlaced} onClick={() => { haptics.selection(); setBet((s: any) => ({ ...s, amount: s.amount + 10 })); }} className="w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center text-gray-400 hover:text-white disabled:opacity-50">
               <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
             </button>
           </div>
           <div className={`grid ${quickAmounts.length > 4 ? "grid-cols-5 sm:grid-cols-3" : "grid-cols-4 sm:grid-cols-2"} gap-1`}>
             {quickAmounts.map((amt: number) => (
-              <button key={amt} disabled={bet.isPlaced} onClick={() => { haptics.selection(); setBet((s: any) => ({ ...s, amount: amt })); }} className="bg-black/20 hover:bg-black/40 text-[8px] sm:text-[10px] font-bold py-1 rounded sm:rounded-lg border border-white/5 transition-colors disabled:opacity-50">
-                {amt}
+              <button key={amt} disabled={bet.isPlaced} onClick={() => { haptics.selection(); setBet((s: any) => ({ ...s, amount: amt })); }} className="bg-black/20 hover:bg-black/40 text-[8px] sm:text-[10px] font-bold py-1 rounded sm:rounded-lg border border-white/5 transition-colors disabled:opacity-50 text-white">
+                ৳{amt}
               </button>
             ))}
           </div>
@@ -738,21 +779,21 @@ function BetPanel({ bet, setBet, onPlace, onCashOut, gameState, countdown, multi
         <div className="flex-1 min-h-[40px] sm:min-h-[60px] flex flex-col gap-1">
           {canCashOut ? (
             <button onClick={onCashOut} className="w-full h-full bg-orange-500 hover:bg-orange-600 rounded-xl sm:rounded-2xl flex flex-col items-center justify-center shadow-[0_2px_0_rgb(194,65,12)] sm:shadow-[0_4px_0_rgb(194,65,12)] active:translate-y-0.5 sm:active:translate-y-1 active:shadow-none transition-all">
-              <span className="text-[8px] sm:text-xs font-black uppercase italic tracking-tighter">Cash Out</span>
-              <span className="text-sm sm:text-xl font-black italic">{(bet.amount * multiplier).toFixed(2)}</span>
+              <span className="text-[8px] sm:text-xs font-black uppercase italic tracking-tighter text-white">Cash Out</span>
+              <span className="text-sm sm:text-xl font-black italic text-white">৳{(bet.amount * multiplier).toFixed(2)}</span>
             </button>
           ) : bet.isPlaced && !bet.isCashedOut && gameState === "IN_FLIGHT" ? (
             <div className="w-full h-full bg-orange-500/50 rounded-xl sm:rounded-2xl flex flex-col items-center justify-center cursor-not-allowed">
-              <span className="text-[8px] sm:text-xs font-black uppercase italic tracking-tighter opacity-50">Waiting...</span>
+              <span className="text-[8px] sm:text-xs font-black uppercase italic tracking-tighter opacity-50 text-white">Waiting...</span>
             </div>
           ) : bet.isPlaced && gameState === "WAITING" ? (
             <button onClick={() => { haptics.selection(); setBet((s: any) => ({ ...s, isPlaced: false, isAutoBet: false })); }} className="w-full h-full bg-rose-500/20 border border-rose-500/50 rounded-xl sm:rounded-2xl flex flex-col items-center justify-center hover:bg-rose-500/30 transition-all">
               <span className="text-[8px] sm:text-xs font-black uppercase italic tracking-tighter text-rose-500">Cancel</span>
             </button>
           ) : (
-            <button disabled={!canPlace} onClick={onPlace} className={`w-full h-full rounded-xl sm:rounded-2xl flex flex-col items-center justify-center transition-all shadow-[0_2px_0_rgba(0,0,0,0.2)] sm:shadow-[0_4px_0_rgba(0,0,0,0.2)] active:translate-y-0.5 sm:active:translate-y-1 active:shadow-none ${canPlace ? "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-700" : "bg-gray-700 cursor-not-allowed opacity-50"}`}>
+            <button disabled={!canPlace} onClick={onPlace} className={`w-full h-full rounded-xl sm:rounded-2xl flex flex-col items-center justify-center transition-all shadow-[0_2px_0_rgba(0,0,0,0.2)] sm:shadow-[0_4px_0_rgba(0,0,0,0.2)] active:translate-y-0.5 sm:active:translate-y-1 active:shadow-none ${canPlace ? "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-700 text-white" : "bg-gray-700 cursor-not-allowed opacity-50 text-gray-400"}`}>
               <span className="text-sm sm:text-xl font-black italic uppercase tracking-tighter">Bet</span>
-              <span className="text-[8px] sm:text-xs font-bold">{bet.amount.toFixed(2)}</span>
+              <span className="text-[8px] sm:text-xs font-bold">৳{bet.amount.toFixed(2)}</span>
             </button>
           )}
         </div>

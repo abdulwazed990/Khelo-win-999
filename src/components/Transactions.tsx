@@ -4,6 +4,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { UserData, SiteSettings, PaymentMethodConfig } from '../types';
 import { toBengaliNumber, formatBengaliCurrency } from '../utils';
 import { useLanguage } from '../context/LanguageContext';
+import { CURRENCY_SYMBOL, formatBDT } from '../config/currency';
 import { haptics } from '../utils/haptics';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -34,6 +35,14 @@ const DEFAULT_LOGOS: Record<string, string> = {
   nagad: 'https://download.logo.wine/logo/Nagad/Nagad-Logo.wine.png',
   upay: 'https://play-lh.googleusercontent.com/j4q49Uq8eN2kH89VbM_z21Z6i6A1G5Qv3_f2T4y_b4q4'
 };
+
+const DEPOSIT_PACKAGES = [
+  { amount: 500, bonus: 25 },
+  { amount: 1000, bonus: 100 },
+  { amount: 2500, bonus: 375 },
+  { amount: 5000, bonus: 1000 },
+  { amount: 10000, bonus: 2500 },
+];
 
 const PRESET_AMOUNTS = [500, 1000, 2000, 5000, 10000, 15000, 20000, 30000];
 
@@ -115,14 +124,17 @@ export default function Transactions({ userData, user }: TransactionsProps) {
     setError('');
 
     try {
+      const requestId = `DEP-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
       await addDoc(collection(db, 'transactions'), {
         uid: userData.uid,
-        userName: userData.name || userData.username || 'User',
+        userName: userData.name || userData.username || 'Demo User',
         userPhone: userData.phone || '',
         type: 'deposit',
         method,
         amount: numAmount,
+        currency: 'BDT',
         status: 'pending',
+        referenceId: requestId,
         senderNumber: senderNumber.trim(),
         transactionId: transactionId.trim().toUpperCase(),
         createdAt: new Date().toISOString()
@@ -149,22 +161,16 @@ export default function Transactions({ userData, user }: TransactionsProps) {
     e.preventDefault();
     if (!userData) return;
     
-    if (userData.balance < 8000) {
-      haptics.error();
-      setError(lang === 'bn' ? 'উইথড্র করার জন্য আপনার ব্যালেন্স কমপক্ষে ৳৮,০০০ হতে হবে।' : 'Minimum ৳8,000 balance required for withdrawal.');
-      return;
-    }
-
-    if (!userData.hasDepositedAfter8k || (userData.turnover || 0) < 200) {
-      haptics.error();
-      setError(lang === 'bn' ? 'আপনাকে ২৫০০ টাকা ডিপোজিট করে ২০০ টাকার টার্নওভার সম্পন্ন করতে হবে।' : 'You must deposit ৳2,500 and complete ৳200 turnover.');
-      return;
-    }
-
     const withdrawAmount = Number(amount);
-    if (!withdrawAmount || withdrawAmount < 500) {
+    if (!withdrawAmount || withdrawAmount < 200) {
       haptics.error();
-      setError(lang === 'bn' ? 'সর্বনিম্ন উইথড্র পরিমাণ ৳৫০০।' : 'Minimum withdrawal amount is ৳500.');
+      setError(lang === 'bn' ? 'সর্বনিম্ন উইথড্র পরিমাণ ৳২০০।' : 'Minimum withdrawal amount is ৳200.');
+      return;
+    }
+
+    if (userData.balance < withdrawAmount) {
+      haptics.error();
+      setError(lang === 'bn' ? `পর্যাপ্ত ব্যালেন্স নেই! আপনার বর্তমান ব্যালেন্স ৳${(userData.balance || 0).toLocaleString()}।` : `Insufficient balance! Your current balance is ৳${(userData.balance || 0).toLocaleString()}.`);
       return;
     }
     
@@ -172,18 +178,27 @@ export default function Transactions({ userData, user }: TransactionsProps) {
     setError('');
 
     try {
+      const requestId = `WD-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+      const prevBal = Number(userData.balance) || 0;
+      const nextBal = Math.max(0, prevBal - withdrawAmount);
+
       await updateDoc(doc(db, 'users', userData.uid), {
         balance: increment(-withdrawAmount)
       });
 
       await addDoc(collection(db, 'transactions'), {
         uid: userData.uid,
-        userName: userData.name || userData.username || 'User',
+        userName: userData.name || userData.username || 'Demo User',
         userPhone: userData.phone || '',
         type: 'withdraw',
         method,
         amount: withdrawAmount,
+        currency: 'BDT',
+        previousBalance: prevBal,
+        newBalance: nextBal,
         status: 'pending',
+        referenceId: requestId,
+        accountIdentifier: senderNumber.trim(),
         senderNumber: senderNumber.trim(),
         createdAt: new Date().toISOString()
       });
@@ -369,6 +384,51 @@ export default function Transactions({ userData, user }: TransactionsProps) {
                 ? '📌 উপরের নম্বরে সেন্ড মানি (Send Money) করে নিচের বক্সে আপনার প্রেরক নম্বর ও TrxID দিন।' 
                 : '📌 Send Money to the above number, then fill your sender number & Transaction ID below.'}
             </p>
+          </div>
+        )}
+
+        {/* Deposit Packages UI */}
+        {tab === 'deposit' && (
+          <div className="space-y-2">
+            <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+              <span className="flex items-center gap-1">
+                <span>{lang === 'bn' ? 'ডিপোজিট প্যাকেজ সিলেক্ট করুন:' : 'Select Deposit Package:'}</span>
+              </span>
+              <span className="text-[10px] text-emerald-600 font-bold">
+                {lang === 'bn' ? '+বোনাস ক্রেডিট সহ' : '+Bonus Credits'}
+              </span>
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {DEPOSIT_PACKAGES.map((pkg) => {
+                const isSelected = amount === pkg.amount.toString();
+                return (
+                  <button
+                    key={pkg.amount}
+                    type="button"
+                    onClick={() => handleSelectPreset(pkg.amount)}
+                    className={`p-2.5 rounded-xl border text-left transition-all flex items-center justify-between ${
+                      isSelected
+                        ? 'bg-blue-50 border-blue-600 ring-2 ring-blue-500/20 shadow-sm'
+                        : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                        isSelected ? 'border-blue-600 bg-blue-600' : 'border-slate-400'
+                      }`}>
+                        {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </div>
+                      <span className="text-sm font-black font-rajdhani text-slate-900">
+                        ৳{pkg.amount.toLocaleString()}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 border border-emerald-200 font-rajdhani">
+                      +{lang === 'bn' ? 'বোনাস' : 'Promo'} ৳{pkg.bonus.toLocaleString()}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 

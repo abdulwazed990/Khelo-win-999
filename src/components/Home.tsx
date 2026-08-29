@@ -36,6 +36,8 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, onSnapshot, query, orderBy, doc, updateDoc, increment, addDoc, serverTimestamp } from 'firebase/firestore';
 import { INITIAL_BANNERS, INITIAL_GAMES, INITIAL_CATEGORIES, seedInitialFirestoreData } from '../services/seedData';
 import { haptics } from '../utils/haptics';
+import { normalizeGameStatus, isGameStatusAvailable, NormalizedGameStatus } from '../services/gameStatusService';
+import GameMaintenanceScreen from './GameMaintenanceScreen';
 
 interface HomeProps {
   user: User | null;
@@ -80,6 +82,7 @@ export default function Home({
   const [activeProvider, setActiveProvider] = useState<string>('all');
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
   const [playingSimGame, setPlayingSimGame] = useState<GameItem | null>(null);
+  const [blockedGame, setBlockedGame] = useState<{ game: GameItem; status: NormalizedGameStatus; reason?: string } | null>(null);
   const [simBetAmount, setSimBetAmount] = useState('50');
   const [simPlaying, setSimPlaying] = useState(false);
   const [simResult, setSimResult] = useState<{ won: boolean; winAmount: number } | null>(null);
@@ -204,6 +207,18 @@ export default function Home({
   // Game click / launcher handler
   const handleGameClick = (game: GameItem) => {
     haptics.selection();
+
+    // Check authoritative game availability status first!
+    const normStatus = normalizeGameStatus(game.status);
+    if (!isGameStatusAvailable(game.status)) {
+      setBlockedGame({
+        game,
+        status: normStatus,
+        reason: game.statusReason
+      });
+      return;
+    }
+
     if (!user) {
       onAuthTrigger('login');
       return;
@@ -562,35 +577,82 @@ export default function Home({
         {filteredGames.map((game, idx) => {
           const gameTitle = lang === 'bn' && game.titleBn ? game.titleBn : (game.title || game.name || 'Game');
           const isHot = game.hot || game.popular;
+          const normStatus = normalizeGameStatus(game.status);
+          const isNotActive = normStatus !== 'ACTIVE';
 
           return (
             <motion.div
               key={game.id || game.slug || `game_${idx}`}
               whileTap={{ scale: 0.96 }}
               onClick={() => handleGameClick(game)}
-              className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group relative"
+              className={`bg-white border rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer group relative ${
+                normStatus === 'SERVER_ERROR' 
+                  ? 'border-rose-300 ring-1 ring-rose-500/30' 
+                  : normStatus === 'MAINTENANCE' 
+                  ? 'border-amber-300 ring-1 ring-amber-500/30' 
+                  : 'border-slate-200'
+              }`}
             >
               {/* Game Cover Image */}
               <div className="relative w-full aspect-[4/3] bg-slate-100 overflow-hidden">
                 <img
                   src={game.imageUrl || game.thumbnailUrl || 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=400&auto=format&fit=crop&q=80'}
                   alt={gameTitle}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 ${
+                    isNotActive ? 'grayscale-[40%] contrast-90' : ''
+                  }`}
                   loading="lazy"
                   referrerPolicy="no-referrer"
                 />
 
                 {/* Hot / Feature Badge */}
-                {isHot && (
+                {isHot && !isNotActive && (
                   <div className="absolute top-1 left-1 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded uppercase shadow-sm">
                     {lang === 'bn' ? 'হট' : 'HOT'}
                   </div>
                 )}
 
-                {/* Play Button Overlay on Hover / Active */}
-                <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                  <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-lg">
-                    <Play size={14} className="fill-white ml-0.5" />
+                {/* Prominent Server Error / Maintenance Ribbon */}
+                {isNotActive ? (
+                  <div className={`absolute top-1 left-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider shadow-sm flex items-center gap-1 ${
+                    normStatus === 'SERVER_ERROR' 
+                      ? 'bg-rose-600 text-white animate-pulse' 
+                      : normStatus === 'MAINTENANCE' 
+                      ? 'bg-amber-500 text-white' 
+                      : 'bg-slate-700 text-slate-200'
+                  }`}>
+                    <span className="w-1 h-1 rounded-full bg-white animate-pulse" />
+                    <span>
+                      {normStatus === 'SERVER_ERROR' 
+                        ? '🔴 SERVER ERROR' 
+                        : normStatus === 'MAINTENANCE' 
+                        ? '🟠 MAINTENANCE' 
+                        : '⚫ UNAVAILABLE'}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="absolute top-1 right-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase bg-emerald-500/90 text-white shadow-2xs">
+                    ACTIVE
+                  </div>
+                )}
+
+                {/* Play / Notice Button Overlay on Hover / Active */}
+                <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                  <div className={`px-2.5 py-1 rounded-full flex items-center justify-center gap-1 shadow-lg text-white text-[9px] font-black uppercase tracking-wider ${
+                    normStatus === 'SERVER_ERROR' ? 'bg-rose-600' : normStatus === 'MAINTENANCE' ? 'bg-amber-500' : normStatus === 'DISABLED' ? 'bg-slate-700' : 'bg-blue-600'
+                  }`}>
+                    {normStatus === 'SERVER_ERROR' ? (
+                      <span>🔴 SERVER ERROR</span>
+                    ) : normStatus === 'MAINTENANCE' ? (
+                      <span>🟠 MAINTENANCE</span>
+                    ) : normStatus === 'DISABLED' ? (
+                      <span>⚫ UNAVAILABLE</span>
+                    ) : (
+                      <>
+                        <Play size={10} className="fill-white ml-0.5" />
+                        <span>🟢 PLAY NOW</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -611,8 +673,16 @@ export default function Home({
                     <Star size={10} className="fill-amber-500 text-amber-500" />
                     {game.rating || '9.8'}
                   </span>
-                  <span className="text-[9px] font-black text-blue-600 uppercase">
-                    {lang === 'bn' ? 'খেলুন' : 'PLAY'}
+                  <span className={`text-[9px] font-black uppercase ${
+                    normStatus === 'SERVER_ERROR' ? 'text-rose-600' : normStatus === 'MAINTENANCE' ? 'text-amber-600' : normStatus === 'DISABLED' ? 'text-slate-500' : 'text-emerald-600'
+                  }`}>
+                    {normStatus === 'SERVER_ERROR' 
+                      ? '🔴 SERVER ERROR'
+                      : normStatus === 'MAINTENANCE' 
+                      ? '🟠 MAINTENANCE'
+                      : normStatus === 'DISABLED'
+                      ? '⚫ UNAVAILABLE'
+                      : '🟢 PLAY NOW'}
                   </span>
                 </div>
               </div>
@@ -749,6 +819,23 @@ export default function Home({
           </div>
         )}
       </AnimatePresence>
+
+      {/* Authoritative Game Server Error / Maintenance Modal Overlay */}
+      {blockedGame && (
+        <GameMaintenanceScreen
+          game={blockedGame.game}
+          status={blockedGame.status}
+          reason={blockedGame.reason}
+          onBackToLobby={() => setBlockedGame(null)}
+          onStatusResolved={(newStatus) => {
+            if (newStatus === 'ACTIVE') {
+              const g = blockedGame.game;
+              setBlockedGame(null);
+              handleGameClick(g);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }
