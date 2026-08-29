@@ -151,7 +151,6 @@ export interface GameItem {
   status?: GameStatus;
   gameStatus?: GameStatus;
   isActive?: boolean;
-  isVisible?: boolean;
   statusReason?: string;
   statusUpdatedAt?: string;
   statusUpdatedBy?: string;
