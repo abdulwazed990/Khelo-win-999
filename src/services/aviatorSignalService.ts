@@ -55,10 +55,20 @@ function cleanFirestoreObject<T extends Record<string, any>>(obj: T): Partial<T>
   return result as Partial<T>;
 }
 
+// Helper to sanitize and obtain active clean origin
+export function getCleanDomainUrl(path: string = '/#signal'): string {
+  if (typeof window !== 'undefined') {
+    const origin = window.location.origin;
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    return `${origin}${cleanPath}`;
+  }
+  return `https://yourwebsite.com${path}`;
+}
+
 // Initial Seed for Game Connection and History
 export async function initializeAviatorSignalDefaults() {
   try {
-    const originUrl = typeof window !== 'undefined' ? `${window.location.origin}/#signal` : 'https://yourwebsite.com/signal';
+    const originUrl = getCleanDomainUrl('/#signal');
 
     // 1. Initialize Game Connection if not exists or merge missing properties
     const connDocRef = doc(db, CONNECTIONS_COLLECTION, DEFAULT_GAME_ID);
@@ -85,7 +95,18 @@ export async function initializeAviatorSignalDefaults() {
     } else {
       const existing = connSnap.data() as SignalGameConnection;
       const updates: any = {};
-      if (!existing.signalAppUrl) updates.signalAppUrl = originUrl;
+      
+      // If signalAppUrl is empty or points to an obsolete preview/container domain, sanitize it to current origin
+      const isOutdatedPreview = existing.signalAppUrl && (
+        existing.signalAppUrl.includes('ais-dev-') || 
+        existing.signalAppUrl.includes('ais-pre-') || 
+        existing.signalAppUrl.includes('.run.app') ||
+        existing.signalAppUrl.includes('ai.studio')
+      );
+
+      if (!existing.signalAppUrl || isOutdatedPreview) {
+        updates.signalAppUrl = originUrl;
+      }
       if (!existing.signalAppStatus) updates.signalAppStatus = 'CONNECTED';
       if (existing.signalAppEnabled === undefined) updates.signalAppEnabled = true;
       if (!existing.syncStatus) updates.syncStatus = 'LIVE';

@@ -82,7 +82,16 @@ export default function App() {
 
       if (path === 'admin' || path === 'admin/dashboard' || path === 'admin-dashboard' || hash === 'admin' || isQueryAdmin) {
         setCurrentPage('admin');
-      } else if (path === 'signal' || hash === 'signal' || path.startsWith('signal') || hash.startsWith('signal') || searchParams.has('signal')) {
+      } else if (
+        path === 'signal' || 
+        hash === 'signal' || 
+        path === 'aviator-signal' || 
+        hash === 'aviator-signal' || 
+        path.startsWith('signal') || 
+        hash.startsWith('signal') || 
+        searchParams.get('page') === 'signal' ||
+        searchParams.has('signal')
+      ) {
         setCurrentPage('aviator-signal');
       } else if (path === 'signal-cms' || hash === 'signal-cms' || path === 'signal-admin' || hash === 'signal-admin') {
         setCurrentPage('admin');
@@ -100,17 +109,48 @@ export default function App() {
         setCurrentPage('transactions');
       } else if (path === 'history' || hash === 'history') {
         setCurrentPage('history');
-      } else if (path === 'aviator' || path === 'aviator-jet' || hash === 'aviator') {
+      } else if (
+        path === 'aviator' || 
+        path === 'aviator-jet' || 
+        hash === 'aviator' || 
+        hash === 'aviator-jet' || 
+        searchParams.get('game') === 'aviator' || 
+        searchParams.get('game') === 'aviator-jet' ||
+        searchParams.get('page') === 'aviator'
+      ) {
         setCurrentPage('aviator-jet');
-      } else if (path === 'super-ace' || path === 'pokie-super-ace' || hash === 'super-ace') {
+      } else if (
+        path === 'super-ace' || 
+        path === 'pokie-super-ace' || 
+        hash === 'super-ace' || 
+        hash === 'pokie-super-ace' ||
+        searchParams.get('game') === 'super-ace' ||
+        searchParams.get('game') === 'pokie-super-ace'
+      ) {
         setCurrentPage('pokie-super-ace');
-      } else if (path === 'boxer-king' || hash === 'boxer-king') {
+      } else if (
+        path === 'boxer-king' || 
+        hash === 'boxer-king' ||
+        searchParams.get('game') === 'boxer-king'
+      ) {
         setCurrentPage('boxer-king');
-      } else if (path === 'mines' || hash === 'mines') {
+      } else if (
+        path === 'mines' || 
+        hash === 'mines' ||
+        searchParams.get('game') === 'mines'
+      ) {
         setCurrentPage('mines');
-      } else if (path === 'roulette' || hash === 'roulette') {
+      } else if (
+        path === 'roulette' || 
+        hash === 'roulette' ||
+        searchParams.get('game') === 'roulette'
+      ) {
         setCurrentPage('roulette');
-      } else if (path === 'coinflip' || hash === 'coinflip') {
+      } else if (
+        path === 'coinflip' || 
+        hash === 'coinflip' ||
+        searchParams.get('game') === 'coinflip'
+      ) {
         setCurrentPage('coinflip');
       }
     };

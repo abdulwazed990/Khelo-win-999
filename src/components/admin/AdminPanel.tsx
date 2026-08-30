@@ -349,6 +349,7 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
   const [gameStatusFilter, setGameStatusFilter] = useState<'ALL' | 'ACTIVE' | 'SERVER_ERROR' | 'MAINTENANCE' | 'DISABLED'>('ALL');
   const [updatingGameStatusId, setUpdatingGameStatusId] = useState<string | null>(null);
   const [cardSelectedStatus, setCardSelectedStatus] = useState<Record<string, NormalizedGameStatus>>({});
+  const [copiedGameId, setCopiedGameId] = useState<string | null>(null);
   
   // Global Win Probability (Fixed 5% Server-Enforced)
   const [adminWinProb, setAdminWinProb] = useState<number>(DEFAULT_GLOBAL_WIN_PROBABILITY);
@@ -357,6 +358,27 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
   const showToast = (msg: string) => {
     setSaveSuccessMessage(msg);
     setTimeout(() => setSaveSuccessMessage(null), 3500);
+  };
+
+  const getGameDirectLink = (game: GameItem) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://yourwebsite.com';
+    const slug = (game.id || game.slug || game.route || '').toLowerCase();
+    if (slug.includes('aviator')) return `${origin}/#aviator`;
+    if (slug.includes('super-ace') || slug.includes('pokie')) return `${origin}/#super-ace`;
+    if (slug.includes('boxer')) return `${origin}/#boxer-king`;
+    if (slug.includes('mines')) return `${origin}/#mines`;
+    if (slug.includes('roulette')) return `${origin}/#roulette`;
+    if (slug.includes('coinflip') || slug.includes('coin')) return `${origin}/#coinflip`;
+    return `${origin}/#${game.slug || game.route || game.id}`;
+  };
+
+  const handleCopyGameDirectLink = (game: GameItem) => {
+    haptics.success();
+    const url = getGameDirectLink(game);
+    navigator.clipboard.writeText(url);
+    setCopiedGameId(game.id);
+    showToast(lang === 'bn' ? `✓ "${game.titleBn || game.title}" ডিরেক্ট গেম লিংক কপি হয়েছে (Google Login লাগবে না)!` : `✓ "${game.title}" Direct Game Link copied!`);
+    setTimeout(() => setCopiedGameId(null), 2500);
   };
 
   const handleCopyAdminLink = () => {
@@ -2048,11 +2070,24 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                             {/* Advanced Config / Edit / Delete Row */}
                             <div className="flex items-center justify-between gap-1 pt-1 text-xs">
                               <button
+                                onClick={() => handleCopyGameDirectLink(g)}
+                                className={`py-1 px-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors border ${
+                                  copiedGameId === g.id
+                                    ? 'bg-emerald-600 text-white border-emerald-600'
+                                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                                }`}
+                                title="Copy Direct Game URL (No Google Login)"
+                              >
+                                {copiedGameId === g.id ? <Check size={11} /> : <Share2 size={11} className="text-blue-600" />}
+                                <span>{copiedGameId === g.id ? (lang === 'bn' ? 'কপি!' : 'Copied!') : (lang === 'bn' ? 'লিংক' : 'Link')}</span>
+                              </button>
+
+                              <button
                                 onClick={() => handleOpenStatusConfig(g)}
                                 className="flex-1 py-1 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-colors"
                               >
                                 <Wrench size={11} className="text-slate-500" />
-                                <span>{lang === 'bn' ? 'কাস্টম নোটিশ' : 'Notice Config'}</span>
+                                <span>{lang === 'bn' ? 'কাস্টম নোটিশ' : 'Notice'}</span>
                               </button>
 
                               <button

@@ -24,11 +24,13 @@ import {
   TrendingUp,
   Signal,
   CheckCircle,
-  XCircle
+  XCircle,
+  Play,
+  Globe
 } from 'lucide-react';
 import { 
   SignalRound, 
-  SignalGameConnection,
+  SignalGameConnection, 
   SignalConnectionStatus 
 } from '../../types';
 import { 
@@ -39,7 +41,8 @@ import {
   toggleSignalAppStatus,
   testGameConnection,
   DEFAULT_GAME_ID,
-  initializeAviatorSignalDefaults
+  initializeAviatorSignalDefaults,
+  getCleanDomainUrl
 } from '../../services/aviatorSignalService';
 import { haptics } from '../../utils/haptics';
 
@@ -55,14 +58,20 @@ export default function SignalManagementTab({ lang, showToast }: SignalManagemen
   const [connection, setConnection] = useState<SignalGameConnection | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Active Origin and clean routes
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://yourwebsite.com';
+  const aviatorGameUrl = `${currentOrigin}/#aviator`;
+  const defaultSignalUrl = `${currentOrigin}/#signal`;
+
   // Editable configuration state
-  const [signalAppUrl, setSignalAppUrl] = useState('');
+  const [signalAppUrl, setSignalAppUrl] = useState(defaultSignalUrl);
   const [gameName, setGameName] = useState('Aviator');
   const [gameId, setGameId] = useState(DEFAULT_GAME_ID);
   const [isSavingUrl, setIsSavingUrl] = useState(false);
   const [isTestingConn, setIsTestingConn] = useState(false);
   const [isTogglingApp, setIsTogglingApp] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedSignalLink, setCopiedSignalLink] = useState(false);
+  const [copiedGameLink, setCopiedGameLink] = useState(false);
   const [pingResult, setPingResult] = useState<number | null>(null);
 
   // 1. Initialize defaults and subscriptions
@@ -81,11 +90,20 @@ export default function SignalManagementTab({ lang, showToast }: SignalManagemen
     const unsubConn = subscribeToGameConnection((conn) => {
       if (conn) {
         setConnection(conn);
-        if (conn.signalAppUrl) {
+        // Sanitize: If saved URL is empty or points to obsolete AI Studio / Cloud Run preview container, use clean domain
+        const isStalePreview = conn.signalAppUrl && (
+          conn.signalAppUrl.includes('ais-dev-') ||
+          conn.signalAppUrl.includes('ais-pre-') ||
+          conn.signalAppUrl.includes('.run.app') ||
+          conn.signalAppUrl.includes('ai.studio')
+        );
+
+        if (conn.signalAppUrl && !isStalePreview) {
           setSignalAppUrl(conn.signalAppUrl);
-        } else if (typeof window !== 'undefined') {
-          setSignalAppUrl(`${window.location.origin}/#signal`);
+        } else {
+          setSignalAppUrl(defaultSignalUrl);
         }
+
         if (conn.gameName) setGameName(conn.gameName);
         if (conn.gameId) setGameId(conn.gameId);
         if (conn.pingMs) setPingResult(conn.pingMs);
@@ -97,14 +115,14 @@ export default function SignalManagementTab({ lang, showToast }: SignalManagemen
       unsubHistory();
       unsubConn();
     };
-  }, []);
+  }, [defaultSignalUrl]);
 
   // Set default URL on first mount if empty
   useEffect(() => {
     if (!signalAppUrl && typeof window !== 'undefined') {
-      setSignalAppUrl(`${window.location.origin}/#signal`);
+      setSignalAppUrl(defaultSignalUrl);
     }
-  }, [signalAppUrl]);
+  }, [signalAppUrl, defaultSignalUrl]);
 
   // 2. Save Signal App URL
   const handleSaveSignalUrl = async () => {
@@ -132,7 +150,27 @@ export default function SignalManagementTab({ lang, showToast }: SignalManagemen
     }
   };
 
-  // 3. Toggle Signal App Master ON/OFF Switch
+  // 3. Reset URL to Current Clean Active Domain
+  const handleResetToCurrentDomain = async () => {
+    setSignalAppUrl(defaultSignalUrl);
+    setIsSavingUrl(true);
+    try {
+      haptics.impact();
+      await updateGameConnectionSettings({
+        signalAppUrl: defaultSignalUrl,
+        gameName: gameName.trim() || 'Aviator',
+        gameId: gameId.trim() || DEFAULT_GAME_ID,
+        lastSyncAt: new Date().toISOString()
+      });
+      showToast(lang === 'bn' ? '✓ বর্তমান কাস্টম ডোমেনের সাথে সিঙ্ক সম্পন্ন!' : '✓ Synced with active custom domain!');
+    } catch (err: any) {
+      console.error('Error syncing domain:', err);
+    } finally {
+      setIsSavingUrl(false);
+    }
+  };
+
+  // 4. Toggle Signal App Master ON/OFF Switch
   const handleToggleSignalAppStatus = async () => {
     const nextState = connection?.signalAppEnabled !== false ? false : true;
     setIsTogglingApp(true);
@@ -149,26 +187,42 @@ export default function SignalManagementTab({ lang, showToast }: SignalManagemen
     }
   };
 
-  // 4. Copy Single Signal Link
-  const handleCopySignalLink = () => {
-    const urlToCopy = signalAppUrl.trim() || (typeof window !== 'undefined' ? `${window.location.origin}/#signal` : 'https://yourwebsite.com/signal');
-    navigator.clipboard.writeText(urlToCopy);
-    setCopiedLink(true);
+  // 5. Copy Aviator Game Direct Link
+  const handleCopyAviatorGameLink = () => {
+    navigator.clipboard.writeText(aviatorGameUrl);
+    setCopiedGameLink(true);
     haptics.success();
-    showToast(lang === 'bn' ? 'সিগন্যাল লিংক ক্লিপবোর্ডে কপি করা হয়েছে!' : 'Signal App link copied to clipboard!');
-    setTimeout(() => setCopiedLink(false), 2500);
+    showToast(lang === 'bn' ? '✓ এভিয়েটর গেম লিংক কপি হয়েছে (Google Login লাগবে না)!' : '✓ Aviator Game Link copied (Direct Website Access)!');
+    setTimeout(() => setCopiedGameLink(false), 2500);
   };
 
-  // 5. Open Single Signal App
+  // 6. Copy Single Signal Link
+  const handleCopySignalLink = () => {
+    const urlToCopy = signalAppUrl.trim() || defaultSignalUrl;
+    navigator.clipboard.writeText(urlToCopy);
+    setCopiedSignalLink(true);
+    haptics.success();
+    showToast(lang === 'bn' ? '✓ সিগন্যাল অ্যাপ লিংক কপি হয়েছে!' : '✓ Signal App link copied to clipboard!');
+    setTimeout(() => setCopiedSignalLink(false), 2500);
+  };
+
+  // 7. Open Links in window
+  const handleOpenAviatorGame = () => {
+    haptics.impact();
+    if (typeof window !== 'undefined') {
+      window.location.hash = 'aviator';
+    }
+  };
+
   const handleOpenSignalApp = () => {
     haptics.impact();
-    const urlToOpen = signalAppUrl.trim() || (typeof window !== 'undefined' ? `${window.location.origin}/#signal` : 'https://yourwebsite.com/signal');
+    const urlToOpen = signalAppUrl.trim() || defaultSignalUrl;
     if (typeof window !== 'undefined') {
       window.open(urlToOpen, '_blank');
     }
   };
 
-  // 6. Toggle Game Connection
+  // 8. Toggle Game Connection
   const handleToggleGameConnection = async () => {
     const newStatus: SignalConnectionStatus = connection?.connectionStatus === 'CONNECTED' ? 'DISCONNECTED' : 'CONNECTED';
     try {
@@ -186,7 +240,7 @@ export default function SignalManagementTab({ lang, showToast }: SignalManagemen
     }
   };
 
-  // 7. Test Game Connection
+  // 9. Test Game Connection
   const handleTestConnection = async () => {
     setIsTestingConn(true);
     try {
@@ -395,24 +449,108 @@ export default function SignalManagementTab({ lang, showToast }: SignalManagemen
         {/* LEFT: SINGLE SIGNAL APP URL CONFIGURATION */}
         <div className="lg:col-span-7 space-y-6">
           
+          {/* 1. AVIATOR JET GAME DIRECT LINK CARD */}
+          <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-slate-800">
+                <Gamepad2 className="w-5 h-5 text-emerald-600" />
+                <h2 className="text-base font-black font-chakra">
+                  {lang === 'bn' ? '🎮 এভিয়েটর জেট গেম ডিরেক্ট লিংক (Aviator Game Link)' : '🎮 Aviator Jet Game Direct Link'}
+                </h2>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold font-chakra">
+                <Globe className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Direct In-App Game</span>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <label className="font-bold text-slate-700 uppercase tracking-wider">
+                  {lang === 'bn' ? 'কাস্টমারদের জন্য গেম লিংক (No Google Login Required)' : 'Direct Game Link (No Google Login Required)'}
+                </label>
+                <span className="text-[10px] font-mono text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                  {lang === 'bn' ? '✓ ওয়েবসাইটের অংশ' : '✓ Direct Site Access'}
+                </span>
+              </div>
+              
+              <div className="flex flex-col sm:flex-row items-stretch gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    readOnly
+                    value={aviatorGameUrl}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-800 font-bold select-all focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Action Buttons: COPY GAME LINK & OPEN GAME */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <button
+                  onClick={handleCopyAviatorGameLink}
+                  className={`w-full py-3 px-4 rounded-xl font-chakra text-xs font-black flex items-center justify-center gap-2 transition-all active:scale-95 border ${
+                    copiedGameLink 
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' 
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-md shadow-emerald-600/20'
+                  }`}
+                >
+                  {copiedGameLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  <span>{copiedGameLink ? (lang === 'bn' ? '✓ লিংক কপি হয়েছে!' : 'COPIED TO CLIPBOARD!') : (lang === 'bn' ? '📋 কপি এভিয়েটর গেম লিংক' : 'COPY AVIATOR GAME LINK')}</span>
+                </button>
+
+                <button
+                  onClick={handleOpenAviatorGame}
+                  className="w-full py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-chakra text-xs font-black flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm"
+                >
+                  <Play className="w-4 h-4 text-emerald-400" />
+                  <span>{lang === 'bn' ? 'গেম চালু করুন (Play Game)' : 'OPEN AVIATOR GAME'}</span>
+                </button>
+              </div>
+
+              <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200/80 text-emerald-950 text-xs leading-relaxed space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-emerald-800">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{lang === 'bn' ? 'সরাসরি ওয়েবসাইট সংযোগ (Google Login ছাড়া)' : 'Clean Website Link'}</span>
+                </div>
+                <p className="text-emerald-800/90 text-[11px]">
+                  {lang === 'bn'
+                    ? 'এই লিংকটি সরাসরি আপনার ডোমেনের সাথে যুক্ত। ব্যবহারকারী এই লিংকে ক্লিক করলে কোনো প্রকার গুগল লগইন বা বাহ্যিক যাচাই ছাড়াই সরাসরি ওয়েবসাইটের ভেতরে Aviator Jet গেম খেলতে পারবেন।'
+                    : 'This link uses your active custom domain. Users who open this link enter directly into the Aviator Jet game inside your website without any Google Login prompt.'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. GLOBAL SIGNAL APP URL CONFIGURATION */}
           <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2 text-slate-800">
                 <LinkIcon className="w-5 h-5 text-red-600" />
                 <h2 className="text-base font-black font-chakra">
-                  {lang === 'bn' ? 'সিগন্যাল অ্যাপ লিংক (Single Public URL)' : 'Global Signal App URL'}
+                  {lang === 'bn' ? '📡 সিগন্যাল অ্যাপ লিংক (Single Public Signal URL)' : '📡 Global Signal App URL'}
                 </h2>
               </div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-bold font-chakra">
-                <Share2 className="w-3.5 h-3.5 text-blue-600" />
-                <span>One URL for All Customers</span>
-              </div>
+              <button
+                onClick={handleResetToCurrentDomain}
+                disabled={isSavingUrl}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[11px] font-bold font-chakra transition-colors"
+                title="Sync with current active domain"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-blue-600 ${isSavingUrl ? 'animate-spin' : ''}`} />
+                <span>{lang === 'bn' ? 'ডোমেন সিঙ্ক করুন' : 'Sync Domain'}</span>
+              </button>
             </div>
 
             <div className="space-y-3">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                {lang === 'bn' ? 'পাবলিক সিগন্যাল অ্যাপ URL' : 'Public Signal App URL'}
-              </label>
+              <div className="flex items-center justify-between text-xs">
+                <label className="font-bold text-slate-700 uppercase tracking-wider">
+                  {lang === 'bn' ? 'পাবলিক সিগন্যাল অ্যাপ URL' : 'Public Signal App URL'}
+                </label>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  {lang === 'bn' ? 'সব কাস্টমারের জন্য একটি লিংক' : 'One URL for All Users'}
+                </span>
+              </div>
               
               <div className="flex flex-col sm:flex-row items-stretch gap-2">
                 <div className="relative flex-1">
@@ -420,7 +558,7 @@ export default function SignalManagementTab({ lang, showToast }: SignalManagemen
                     type="text"
                     value={signalAppUrl}
                     onChange={(e) => setSignalAppUrl(e.target.value)}
-                    placeholder="https://yourwebsite.com/signal"
+                    placeholder="https://yourwebsite.com/#signal"
                     className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-mono text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 font-bold"
                   />
                 </div>
@@ -435,17 +573,17 @@ export default function SignalManagementTab({ lang, showToast }: SignalManagemen
               </div>
 
               {/* Action Buttons: COPY SIGNAL LINK & OPEN SIGNAL APP */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <button
                   onClick={handleCopySignalLink}
                   className={`w-full py-3 px-4 rounded-xl font-chakra text-xs font-black flex items-center justify-center gap-2 transition-all active:scale-95 border ${
-                    copiedLink 
+                    copiedSignalLink 
                       ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm' 
                       : 'bg-red-600 hover:bg-red-700 text-white border-red-600 shadow-md shadow-red-600/20'
                   }`}
                 >
-                  {copiedLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  <span>{copiedLink ? (lang === 'bn' ? 'কপি সফল হয়েছে!' : 'COPIED TO CLIPBOARD!') : (lang === 'bn' ? 'কপি সিগন্যাল লিংক (COPY LINK)' : 'COPY SIGNAL LINK')}</span>
+                  {copiedSignalLink ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  <span>{copiedSignalLink ? (lang === 'bn' ? '✓ সিগন্যাল কপি হয়েছে!' : 'COPIED TO CLIPBOARD!') : (lang === 'bn' ? '📋 কপি সিগন্যাল লিংক' : 'COPY SIGNAL LINK')}</span>
                 </button>
 
                 <button
