@@ -162,9 +162,9 @@ export default function Transactions({ userData, user }: TransactionsProps) {
     if (!userData) return;
     
     const withdrawAmount = Number(amount);
-    if (!withdrawAmount || withdrawAmount < 200) {
+    if (!withdrawAmount || withdrawAmount <= 0) {
       haptics.error();
-      setError(lang === 'bn' ? 'সর্বনিম্ন উইথড্র পরিমাণ ৳২০০।' : 'Minimum withdrawal amount is ৳200.');
+      setError(lang === 'bn' ? 'অনুগ্রহ করে সঠিক পরিমাণ লিখুন।' : 'Please enter a valid amount.');
       return;
     }
 
@@ -471,7 +471,7 @@ export default function Transactions({ userData, user }: TransactionsProps) {
               <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input 
                 type="number"
-                placeholder={tab === 'deposit' ? (lang === 'bn' ? 'সর্বনিম্ন ৳২০০' : 'Min ৳200') : (lang === 'bn' ? 'সর্বনিম্ন ৳৫০০' : 'Min ৳500')}
+                placeholder={lang === 'bn' ? 'টাকার পরিমাণ লিখুন' : 'Enter amount'}
                 required
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}

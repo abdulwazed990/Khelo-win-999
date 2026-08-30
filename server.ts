@@ -68,6 +68,60 @@ app.get("/api/verification/:recordId", (req, res) => {
   });
 });
 
+// In-memory Server-Side Global Win Probability (Fixed default 5%, centrally configured)
+let serverGlobalWinProbability: number = 5; // 5%
+
+// Centralized Global Win Probability Endpoints
+app.get("/api/settings/game-probability", (req, res) => {
+  res.json({
+    success: true,
+    globalWinProbability: serverGlobalWinProbability,
+    updatedAt: new Date().toISOString()
+  });
+});
+
+app.post("/api/settings/game-probability", (req, res) => {
+  const { globalWinProbability, adminEmail } = req.body || {};
+  const num = Number(globalWinProbability);
+
+  if (isNaN(num) || num < 1 || num > 100) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid probability value. Must be a number between 1 and 100.'
+    });
+  }
+
+  const prev = serverGlobalWinProbability;
+  serverGlobalWinProbability = Math.round(num * 100) / 100;
+  console.log(`[PROBABILITY_UPDATE] Global Win Probability updated from ${prev}% to ${serverGlobalWinProbability}% by ${adminEmail || 'admin'}`);
+
+  res.json({
+    success: true,
+    globalWinProbability: serverGlobalWinProbability,
+    previous: prev,
+    updatedAt: new Date().toISOString()
+  });
+});
+
+// Authoritative Server-Side Game Outcome Calculation Endpoint
+app.post("/api/games/calculate-outcome", (req, res) => {
+  const { gameKey, stakeAmount } = req.body || {};
+  const game = (gameKey || '').toLowerCase().trim();
+
+  // Server-side independent random trial against the centralized Global Win Probability
+  const isWin = (Math.random() * 100) < serverGlobalWinProbability;
+  const roundId = `RND-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+  res.json({
+    success: true,
+    roundId,
+    gameKey: game,
+    win: isWin,
+    globalWinProbability: serverGlobalWinProbability,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Get All Game Statuses Endpoint
 app.get("/api/games/status", (req, res) => {
   res.json({

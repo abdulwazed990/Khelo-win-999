@@ -16,6 +16,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, updateDoc, increment, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import confetti from 'canvas-confetti';
 import { haptics } from '../utils/haptics';
+import { generateCoinflipOutcome } from '../services/gameProbabilityService';
 
 interface CoinflipGameProps {
   user: User | null;
@@ -73,10 +74,8 @@ export default function CoinflipGame({ user, userData, onBack }: CoinflipGamePro
       setResult(null);
       playSfx(flipSound.current);
 
-      // Outcome with 60% win probability
-      const isWin = Math.random() < 0.60;
-      const outcome: 'heads' | 'tails' = isWin ? selectedSide : (selectedSide === 'heads' ? 'tails' : 'heads');
-      const won = outcome === selectedSide;
+      // Authoritative outcome based on centralized Global Win Probability (Fixed 5%)
+      const { outcome, won } = generateCoinflipOutcome(selectedSide);
 
       // Animate rotation (at least 5 full 360 flips + side orientation)
       const targetDeg = 360 * 6 + (outcome === 'tails' ? 180 : 0);

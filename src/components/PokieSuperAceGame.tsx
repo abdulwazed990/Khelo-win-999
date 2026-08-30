@@ -14,6 +14,7 @@ import { doc, updateDoc, increment } from 'firebase/firestore';
 import { UserData } from '../types';
 import { toBengaliNumber, formatBengaliCurrency } from '../utils';
 import { haptics } from '../utils/haptics';
+import { evaluateServerWinRoll } from '../services/gameProbabilityService';
 import './PokieSuperAceStyles.css';
 
 interface SymbolInstance {
@@ -594,26 +595,11 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
     } else if (forceSymbolId !== undefined) {
       randomSymbol = SYMBOLS.find(s => s.id === forceSymbolId)!;
     } else {
-      const currentSpinCount = spinCountRef.current;
       const isFS = isFreeSpinModeRef.current;
       
-      // RTP-based probability adjustment
-      const rtp = sessionStats.totalBet > 0 ? sessionStats.totalWin / sessionStats.totalBet : 0.95;
-      const isOverpaying = rtp > 0.98;
-      const isUnderpaying = rtp < 0.85;
-
-      // Base probabilities
-      let scatterProb = isFS ? 0.01 : 0.015;
-      let wildProb = 0.02;
-      
-      // Adjust probabilities based on RTP
-      if (isOverpaying) {
-        scatterProb *= 0.5;
-        wildProb *= 0.7;
-      } else if (isUnderpaying) {
-        scatterProb *= 1.5;
-        wildProb *= 1.3;
-      }
+      // Base unbiased probabilities
+      const scatterProb = isFS ? 0.01 : 0.015;
+      const wildProb = 0.02;
 
       const isScatter = Math.random() < scatterProb && currentScatters < 5;
       
@@ -624,9 +610,7 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
         if (isWild && colIndex !== undefined && colIndex >= 1) { // Wilds usually not on reel 1
           randomSymbol = WILD_SYMBOL;
         } else {
-          // Weighted symbol selection
-          // Low symbols (5-8) are more frequent
-          // High symbols (2-4, 9) are less frequent
+          // Standard weighted symbol distribution
           const weights = [
             { id: 2, weight: 5 },  // King
             { id: 3, weight: 8 },  // Queen
@@ -637,12 +621,6 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
             { id: 8, weight: 35 }, // 7
             { id: 9, weight: 5 },  // Ace
           ];
-
-          // Adjust weights based on RTP
-          if (isOverpaying) {
-            weights.find(w => w.id === 2)!.weight = 2;
-            weights.find(w => w.id === 9)!.weight = 2;
-          }
 
           const totalWeight = weights.reduce((sum, w) => sum + w.weight, 0);
           let rand = Math.random() * totalWeight;
@@ -1086,22 +1064,24 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       let newGrid: SymbolInstance[][] = [];
       let currentScatters = 0;
 
-      // Realistic Outcome Logic
-      const rtp = sessionStats.totalBet > 0 ? sessionStats.totalWin / sessionStats.totalBet : 0.95;
-      const outcomeRand = Math.random();
-      
+      // Authoritative outcome logic based on centralized Global Win Probability (Fixed 5%)
+      const isWin = evaluateServerWinRoll();
       let forceType: 'none' | 'small' | 'scatter' | 'big_fs' = 'none';
       
       if (isFS) {
-        // Free spin logic: 40%+ winning spins in bonus rounds
-        if (outcomeRand < 0.10) forceType = 'big_fs';
-        else if (outcomeRand < 0.45) forceType = 'small';
+        // Free spin mode
+        if (isWin) {
+          forceType = Math.random() < 0.25 ? 'big_fs' : 'small';
+        } else {
+          forceType = 'none';
+        }
       } else {
-        // Normal spin logic: exactly 40% overall winning spin rate
-        const scatterChance = sessionStats.spinsSinceLastBigWin > 25 ? 0.04 : 0.02;
-        if (outcomeRand < scatterChance && !hasHadFreeSpins) forceType = 'scatter';
-        else if (outcomeRand < 0.40) forceType = 'small';
-        else forceType = 'none';
+        // Normal base game: 5% Global Win Probability
+        if (isWin) {
+          forceType = Math.random() < 0.10 ? 'scatter' : 'small';
+        } else {
+          forceType = 'none';
+        }
       }
 
       if (forceType === 'small') {

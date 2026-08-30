@@ -273,9 +273,13 @@ export interface SiteSettings {
   faviconUrl?: string;
   defaultLanguage?: 'bn' | 'en';
   theme?: string;
-  telegramUrl: string;
-  liveChatUrl: string;
-  whatsappUrl: string;
+  globalWinProbability?: number; // Centralized Win Probability for all games (default 5%)
+  telegramUrl?: string;
+  liveChatUrl?: string;
+  whatsappUrl?: string;
+  supportWhatsapp?: string;
+  telegramChannel?: string;
+  facebookPage?: string;
   facebookUrl?: string;
   supportEnabled?: boolean;
   maintenanceMode?: boolean;

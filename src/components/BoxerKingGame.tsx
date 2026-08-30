@@ -26,6 +26,7 @@ import { doc, updateDoc, increment, addDoc, collection, serverTimestamp } from '
 import { UserData } from '../types';
 import { toBengaliNumber, formatBengaliCurrency } from '../utils';
 import { haptics } from '../utils/haptics';
+import { evaluateServerWinRoll } from '../services/gameProbabilityService';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -368,14 +369,18 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
 
     setWinningCells(Array(REEL_COUNT).fill(null).map(() => Array(ROW_COUNT).fill(false)));
 
-    // Outcome Generation (60% Win Rate)
-    const outcomeRand = Math.random();
+    // Outcome Generation based on centralized Global Win Probability (Fixed 5%)
+    const isWin = evaluateServerWinRoll();
     let outcomeType: 'none' | 'small' | 'medium' | 'big' = 'none';
     
-    if (outcomeRand < 0.05) outcomeType = 'big';
-    else if (outcomeRand < 0.20) outcomeType = 'medium';
-    else if (outcomeRand < 0.60) outcomeType = 'small';
-    else outcomeType = 'none';
+    if (isWin) {
+      const tierRoll = Math.random();
+      if (tierRoll < 0.15) outcomeType = 'big';
+      else if (tierRoll < 0.45) outcomeType = 'medium';
+      else outcomeType = 'small';
+    } else {
+      outcomeType = 'none';
+    }
 
     const canTriggerKing = kingSpinCount >= kingThreshold || Math.random() < 0.005;
     const canTriggerGlove = gloveSpinCount >= gloveThreshold || Math.random() < 0.004;

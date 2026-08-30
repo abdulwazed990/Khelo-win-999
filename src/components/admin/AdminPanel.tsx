@@ -77,10 +77,13 @@ import {
   Wrench,
   ShieldAlert,
   AlertOctagon,
-  Lock
+  Lock,
+  Percent,
+  Cpu
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { updateGameStatus, normalizeGameStatus, NormalizedGameStatus } from '../../services/gameStatusService';
+import { updateGlobalWinProbability, DEFAULT_GLOBAL_WIN_PROBABILITY } from '../../services/gameProbabilityService';
 import SignalManagementTab from './SignalManagementTab';
 import WithdrawalsTab from './WithdrawalsTab';
 import DepositsTab from './DepositsTab';
@@ -346,6 +349,10 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
   const [gameStatusFilter, setGameStatusFilter] = useState<'ALL' | 'ACTIVE' | 'SERVER_ERROR' | 'MAINTENANCE' | 'DISABLED'>('ALL');
   const [updatingGameStatusId, setUpdatingGameStatusId] = useState<string | null>(null);
   const [cardSelectedStatus, setCardSelectedStatus] = useState<Record<string, NormalizedGameStatus>>({});
+  
+  // Global Win Probability (Fixed 5% Server-Enforced)
+  const [adminWinProb, setAdminWinProb] = useState<number>(DEFAULT_GLOBAL_WIN_PROBABILITY);
+  const [savingProb, setSavingProb] = useState<boolean>(false);
 
   const showToast = (msg: string) => {
     setSaveSuccessMessage(msg);
@@ -454,7 +461,11 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'site'), (docSnap) => {
       if (docSnap.exists()) {
-        setSettings(docSnap.data() as SiteSettings);
+        const data = docSnap.data() as SiteSettings;
+        setSettings(data);
+        if (typeof data.globalWinProbability === 'number') {
+          setAdminWinProb(data.globalWinProbability);
+        }
       }
     }, (err) => console.warn('Settings error', err));
     return () => unsub();
@@ -972,13 +983,36 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
     haptics.medium();
     try {
       const docRef = doc(db, 'settings', 'site');
-      await setDoc(docRef, {
+      const dataToSave = {
         ...settings,
+        globalWinProbability: Number(adminWinProb) || DEFAULT_GLOBAL_WIN_PROBABILITY,
         updatedAt: new Date().toISOString()
-      }, { merge: true });
-      showToast(lang === 'bn' ? 'ওয়েবসাইট সেটিংস সফলভাবে আপডেট হয়েছে!' : 'Settings updated successfully!');
+      };
+      await setDoc(docRef, dataToSave, { merge: true });
+      
+      // Also update authoritative server memory
+      const adminEmail = user?.email || userData?.email || 'admin@tk333.vip';
+      await updateGlobalWinProbability(Number(adminWinProb) || DEFAULT_GLOBAL_WIN_PROBABILITY, adminEmail);
+
+      showToast(lang === 'bn' ? 'ওয়েবসাইট সেটিংস ও গ্লোবাল উইন প্রোবাবিলিটি সফলভাবে সংরক্ষিত!' : 'Website settings and Global Win Probability saved!');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'settings/site');
+    }
+  };
+
+  // Dedicated instant save for Global Win Probability with Audit logging
+  const handleSaveGlobalProbability = async (probToSave: number) => {
+    setSavingProb(true);
+    haptics.medium();
+    const adminEmail = user?.email || userData?.email || 'admin@tk333.vip';
+    const result = await updateGlobalWinProbability(probToSave, adminEmail);
+    setSavingProb(false);
+    if (result.success) {
+      setAdminWinProb(probToSave);
+      setSettings(prev => ({ ...prev, globalWinProbability: probToSave }));
+      showToast(lang === 'bn' ? `✓ গ্লোবাল উইন প্রোবাবিলিটি ${probToSave}% সেট করা হয়েছে (সার্ভার নিয়ন্ত্রিত)!` : `✓ Global Win Probability set to ${probToSave}% (Server enforced)!`);
+    } else {
+      alert(result.error || 'Failed to update win probability');
     }
   };
 
@@ -1736,6 +1770,113 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                     {games.filter(g => normalizeGameStatus(g.status) === 'MAINTENANCE').length}
                   </div>
                 </button>
+              </div>
+
+              {/* CENTRALIZED GLOBAL WIN PROBABILITY (FIXED 5% MASTER CONTROL) */}
+              <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-4 sm:p-5 rounded-3xl border border-indigo-500/30 shadow-xl space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-indigo-500/20">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 rounded-2xl bg-indigo-600/80 border border-indigo-400/40 flex items-center justify-center text-amber-300 shadow-md">
+                      <Percent size={20} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-chakra font-black text-sm sm:text-base text-white tracking-wide">
+                          {lang === 'bn' ? 'গ্লোবাল উইন প্রোবাবিলিটি (Global Win Probability)' : 'Global Win Probability Master Setting'}
+                        </h3>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 font-mono text-[10px] font-bold">
+                          {lang === 'bn' ? 'সার্ভার-নিয়ন্ত্রিত (Authoritative)' : 'Server Enforced'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-300">
+                        {lang === 'bn' 
+                          ? 'পুরো demo/play-money প্ল্যাটফর্মের সব গেমের জন্য একক উইন রেট (ডিফল্ট: ৫%)' 
+                          : 'Centralized win rate applied to all demo games universally (Default: 5%).'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="bg-indigo-900/60 border border-indigo-400/30 px-3.5 py-1.5 rounded-2xl text-center">
+                      <span className="text-[9px] text-slate-400 uppercase tracking-wider block font-bold">
+                        {lang === 'bn' ? 'বর্তমান মান' : 'Active Rate'}
+                      </span>
+                      <span className="font-chakra font-black text-xl text-amber-400 leading-tight">
+                        {adminWinProb}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Notice Text */}
+                <div className="p-2.5 rounded-xl bg-indigo-950/70 border border-indigo-500/20 text-[11px] text-slate-300 flex items-start gap-2">
+                  <Cpu size={15} className="text-indigo-400 shrink-0 mt-0.5" />
+                  <span>
+                    {lang === 'bn' 
+                      ? '📌 Aviator, Super Ace, Mines, Boxer King, Roulette, Coinflip সহ সকল গেম এই একই সেন্ট্রালাইজড প্রোবাবিলিটি ব্যবহার করবে। কোনো গেমে আলাদা লুকানো উইন পার্সেন্টেজ থাকবে না।' 
+                      : '📌 All games (Aviator, Super Ace, Mines, Boxer King, Roulette, Coinflip) strictly calculate outcomes via this authoritative setting.'}
+                  </span>
+                </div>
+
+                {/* Quick Presets & Range Slider */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-300 uppercase tracking-wider block">
+                      {lang === 'bn' ? 'কুইক প্রিসেট নির্বাচন:' : 'Quick Rate Presets:'}
+                    </label>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[
+                        { val: 5, label: '5% (Fixed)', tag: 'Default' },
+                        { val: 10, label: '10%', tag: '' },
+                        { val: 25, label: '25%', tag: '' },
+                        { val: 50, label: '50%', tag: '' }
+                      ].map((item) => (
+                        <button
+                          key={item.val}
+                          type="button"
+                          onClick={() => {
+                            setAdminWinProb(item.val);
+                            handleSaveGlobalProbability(item.val);
+                          }}
+                          disabled={savingProb}
+                          className={`py-2 px-1 rounded-xl text-xs font-chakra font-black transition-all border text-center ${
+                            adminWinProb === item.val
+                              ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md font-extrabold ring-2 ring-amber-400/40'
+                              : 'bg-indigo-900/40 hover:bg-indigo-900/80 text-slate-200 border-indigo-500/30'
+                          }`}
+                        >
+                          <div>{item.label}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-slate-300">
+                      <span>{lang === 'bn' ? 'কাস্টম স্লাইডার (১% - ১০০%):' : 'Custom Probability Slider:'}</span>
+                      <span className="font-mono text-amber-400 font-bold">{adminWinProb}%</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min="1"
+                        max="100"
+                        value={adminWinProb}
+                        onChange={(e) => setAdminWinProb(Number(e.target.value))}
+                        className="w-full h-2 bg-indigo-900/80 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveGlobalProbability(adminWinProb)}
+                        disabled={savingProb}
+                        className="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-chakra font-black text-xs rounded-xl shadow-md shrink-0 flex items-center gap-1.5 active:scale-95 transition-all disabled:opacity-50"
+                      >
+                        {savingProb ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                        <span>{lang === 'bn' ? 'সংরক্ষণ' : 'Apply'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Filter Tabs */}
@@ -2933,6 +3074,48 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                     placeholder="https://facebook.com/..."
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono"
                   />
+                </div>
+
+                {/* Global Win Probability (Fixed 5% Default) */}
+                <div className="p-3.5 bg-indigo-50/80 border border-indigo-200 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-black text-indigo-950 uppercase flex items-center gap-1.5">
+                      <Percent size={14} className="text-indigo-600" />
+                      <span>{lang === 'bn' ? 'গ্লোবাল উইন প্রোবাবিলিটি (Fixed Win Rate %):' : 'Global Win Probability (%):'}</span>
+                    </label>
+                    <span className="font-chakra font-black text-sm text-indigo-700 font-mono">
+                      {adminWinProb}%
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    {lang === 'bn' 
+                      ? 'পুরো ওয়েবসাইটের সব গেমের জন্য একক উইন রেট (ডিফল্ট: ৫%)। ফলাফল সরাসরি সার্ভার থেকে নির্ধারিত হয়।' 
+                      : 'Authoritative centralized win probability for all demo games (Default: 5%).'}
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={adminWinProb}
+                      onChange={(e) => setAdminWinProb(Number(e.target.value))}
+                      className="w-24 px-3 py-2 bg-white border border-indigo-300 rounded-xl text-xs text-slate-900 font-black font-mono"
+                    />
+                    <div className="flex items-center gap-1">
+                      {[5, 10, 25, 50].map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => setAdminWinProb(v)}
+                          className={`px-2.5 py-1.5 rounded-lg text-[10px] font-chakra font-black border ${
+                            adminWinProb === v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-indigo-700 border-indigo-200'
+                          }`}
+                        >
+                          {v}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="pt-2">

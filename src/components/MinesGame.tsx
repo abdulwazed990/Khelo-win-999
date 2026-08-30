@@ -20,6 +20,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, updateDoc, increment, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import confetti from 'canvas-confetti';
 import { haptics } from '../utils/haptics';
+import { evaluateServerWinRoll } from '../services/gameProbabilityService';
 
 interface MinesGameProps {
   user: User | null;
@@ -127,8 +128,8 @@ export default function MinesGame({ user, userData, onBack }: MinesGameProps) {
     setRevealed(nextRevealed);
 
     let currentGrid = [...grid];
-    // Dynamic 60% win assistance on early picks
-    if (currentGrid[index] === 'mine' && Math.random() < 0.60) {
+    // Authoritative check based on centralized Global Win Probability (Fixed 5%)
+    if (currentGrid[index] === 'mine' && evaluateServerWinRoll()) {
       // Swap mine to another unrevealed spot
       const availableIndices = currentGrid
         .map((val, idx) => (!revealed[idx] && idx !== index && val === 'gem' ? idx : -1))

@@ -6,6 +6,7 @@ import { broadcastLiveGameRound, generateRoundId, subscribeToRoundsHistory } fro
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, updateDoc, increment, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { CURRENCY_SYMBOL, formatBDT } from '../config/currency';
+import { generateAviatorCrashMultiplier } from '../services/gameProbabilityService';
 
 interface AviatorJetGameProps {
   user: any;
@@ -176,12 +177,8 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
   const currentRoundIdRef = useRef(generateRoundId());
 
   const generateCrashMult = () => {
-    // 60% comfortable win flights (>= 2.1x to 15.0x)
-    const isWin = Math.random() < 0.60;
-    if (isWin) {
-      return parseFloat((2.1 + Math.random() * 8.5).toFixed(2));
-    }
-    return parseFloat((1.15 + Math.random() * 0.75).toFixed(2));
+    // Authoritative Server Rule: Uses centralized Global Win Probability (Fixed 5%)
+    return generateAviatorCrashMultiplier();
   };
 
   // Subscribe to real-time round history from database

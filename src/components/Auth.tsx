@@ -180,6 +180,13 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
       } else if (err.code === 'auth/popup-blocked') {
         setError(lang === 'bn' ? 'ব্রাউজার পপআপ ব্লক করেছে। অনুগ্রহ করে পপআপ অনুমোদন করুন।' : 'Popup was blocked by browser. Please allow popups.');
         haptics.error();
+      } else if (err.code === 'auth/unauthorized-domain') {
+        haptics.error();
+        setError(
+          lang === 'bn'
+            ? 'এই ডোমেনটি Firebase Auth এ অনুমোদিত নয়। অনুগ্রহ করে ইউজারনেম ও পাসওয়ার্ড দিয়ে লগইন/রেজিস্ট্রেশন করুন।'
+            : 'Domain unauthorized for Firebase Google Auth. Please login or register using your Username & Password.'
+        );
       } else {
         haptics.error();
         setError(err.message || (lang === 'bn' ? 'Google সাইন-ইন সম্পন্ন করা সম্ভব হয়নি।' : 'Google Sign-In failed'));

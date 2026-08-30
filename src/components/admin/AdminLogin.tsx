@@ -185,7 +185,17 @@ export default function AdminLogin({ onSuccess, onBackToSite }: AdminLoginProps)
     } catch (err: any) {
       console.error('Google Admin Sign-in error:', err);
       haptics.error();
-      setErrorMsg(err.message || 'Google Sign-in failed.');
+      if (err.code === 'auth/unauthorized-domain') {
+        setErrorMsg(
+          lang === 'bn'
+            ? 'Firebase-এ এই ডোমেনটি অনুমোদিত নয়। অনুগ্রহ করে উপরে অ্যাডমিন ইউজারনেম ও পাসওয়ার্ড ব্যবহার করুন।'
+            : 'Domain unauthorized for Firebase Auth. Please use Admin Username & Password above.'
+        );
+      } else if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+        setErrorMsg(null);
+      } else {
+        setErrorMsg(err.message || 'Google Sign-in failed.');
+      }
     } finally {
       setLoading(false);
     }
