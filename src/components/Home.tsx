@@ -34,7 +34,7 @@ import {
 } from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, onSnapshot, query, orderBy, doc, updateDoc, increment, addDoc, serverTimestamp } from 'firebase/firestore';
-import { INITIAL_BANNERS, INITIAL_GAMES, INITIAL_CATEGORIES, seedInitialFirestoreData } from '../services/seedData';
+import { INITIAL_BANNERS, INITIAL_GAMES, INITIAL_CATEGORIES, INITIAL_PROMOTIONS, INITIAL_ANNOUNCEMENT, seedInitialFirestoreData } from '../services/seedData';
 import { haptics } from '../utils/haptics';
 import { normalizeGameStatus, isGameStatusAvailable, NormalizedGameStatus } from '../services/gameStatusService';
 import GameMaintenanceScreen from './GameMaintenanceScreen';
@@ -72,13 +72,54 @@ export default function Home({
 }: HomeProps) {
   const { lang, t, getLocalizedText } = useLanguage();
 
-  // Data States from Firestore
-  const [banners, setBanners] = useState<BannerItem[]>([]);
-  const [games, setGames] = useState<GameItem[]>([]);
-  const [categories, setCategories] = useState<CategoryItem[]>([]);
-  const [homeAds, setHomeAds] = useState<HomeAdItem[]>([]);
-  const [promotions, setPromotions] = useState<PromotionItem[]>([]);
-  const [announcementObj, setAnnouncementObj] = useState<AnnouncementItem | null>(null);
+  // Data States initialized with local cache / default fallbacks
+  const [banners, setBanners] = useState<BannerItem[]>(() => {
+    try {
+      const c = localStorage.getItem('tk333_cached_banners');
+      if (c) return JSON.parse(c);
+    } catch (e) {}
+    return INITIAL_BANNERS.map((b, i) => ({ id: `b_${i}`, ...b }));
+  });
+
+  const [games, setGames] = useState<GameItem[]>(() => {
+    try {
+      const c = localStorage.getItem('tk333_cached_games');
+      if (c) return JSON.parse(c);
+    } catch (e) {}
+    return INITIAL_GAMES.map((g, i) => ({ id: `g_${i}`, ...g }));
+  });
+
+  const [categories, setCategories] = useState<CategoryItem[]>(() => {
+    try {
+      const c = localStorage.getItem('tk333_cached_categories');
+      if (c) return JSON.parse(c);
+    } catch (e) {}
+    return INITIAL_CATEGORIES.map((c, i) => ({ id: `cat_${c.slug || i}`, ...c } as CategoryItem));
+  });
+
+  const [homeAds, setHomeAds] = useState<HomeAdItem[]>(() => {
+    try {
+      const c = localStorage.getItem('tk333_cached_ads');
+      if (c) return JSON.parse(c);
+    } catch (e) {}
+    return [];
+  });
+
+  const [promotions, setPromotions] = useState<PromotionItem[]>(() => {
+    try {
+      const c = localStorage.getItem('tk333_cached_promos');
+      if (c) return JSON.parse(c);
+    } catch (e) {}
+    return INITIAL_PROMOTIONS.map((p, i) => ({ id: `promo_${i}`, ...p }));
+  });
+
+  const [announcementObj, setAnnouncementObj] = useState<AnnouncementItem | null>(() => {
+    try {
+      const c = localStorage.getItem('tk333_cached_announcement');
+      if (c) return JSON.parse(c);
+    } catch (e) {}
+    return { id: 'main_marquee', ...INITIAL_ANNOUNCEMENT };
+  });
 
   // UI States
   const [activeCategory, setActiveCategory] = useState<string>('hot');
@@ -90,72 +131,77 @@ export default function Home({
   const [simPlaying, setSimPlaying] = useState(false);
   const [simResult, setSimResult] = useState<{ won: boolean; winAmount: number } | null>(null);
 
-  // 1. Listen to Firestore collections as Source of Truth
+  // 1. Listen to Firestore collections with local cache & quota protection
   useEffect(() => {
     seedInitialFirestoreData();
 
     // Banners Listener
-    const bannersQ = query(collection(db, 'banners'), orderBy('order', 'asc'));
-    const unsubBanners = onSnapshot(bannersQ, (snapshot) => {
+    const unsubBanners = onSnapshot(collection(db, 'banners'), (snapshot) => {
       if (!snapshot.empty) {
         const list: BannerItem[] = [];
         snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as BannerItem));
+        list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
         const active = list.filter(b => b.active !== false && b.isActive !== false);
-        setBanners(active.length > 0 ? active : list);
-      } else {
-        setBanners(INITIAL_BANNERS.map((b, i) => ({ id: `b_${i}`, ...b })));
+        const finalList = active.length > 0 ? active : list;
+        setBanners(finalList);
+        try { localStorage.setItem('tk333_cached_banners', JSON.stringify(finalList)); } catch (e) {}
       }
     }, () => {
-      setBanners(INITIAL_BANNERS.map((b, i) => ({ id: `b_${i}`, ...b })));
+      // Fallback on quota error
+      setBanners(prev => prev.length ? prev : INITIAL_BANNERS.map((b, i) => ({ id: `b_${i}`, ...b })));
     });
 
     // Categories Listener
-    const catsQ = query(collection(db, 'categories'), orderBy('order', 'asc'));
-    const unsubCats = onSnapshot(catsQ, (snapshot) => {
+    const unsubCats = onSnapshot(collection(db, 'categories'), (snapshot) => {
       if (!snapshot.empty) {
         const list: CategoryItem[] = [];
         snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as CategoryItem));
+        list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
         const active = list.filter(c => c.active !== false && c.isActive !== false);
-        setCategories(active.length > 0 ? active : list);
-      } else {
-        setCategories(INITIAL_CATEGORIES.map((c, i) => ({ id: `cat_${c.slug || i}`, ...c } as CategoryItem)));
+        const finalList = active.length > 0 ? active : list;
+        setCategories(finalList);
+        try { localStorage.setItem('tk333_cached_categories', JSON.stringify(finalList)); } catch (e) {}
       }
     }, () => {
-      setCategories(INITIAL_CATEGORIES.map((c, i) => ({ id: `cat_${c.slug || i}`, ...c } as CategoryItem)));
+      setCategories(prev => prev.length ? prev : INITIAL_CATEGORIES.map((c, i) => ({ id: `cat_${c.slug || i}`, ...c } as CategoryItem)));
     });
 
     // Games Listener
-    const gamesQ = query(collection(db, 'games'), orderBy('order', 'asc'));
-    const unsubGames = onSnapshot(gamesQ, (snapshot) => {
+    const unsubGames = onSnapshot(collection(db, 'games'), (snapshot) => {
       if (!snapshot.empty) {
         const list: GameItem[] = [];
         snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as GameItem));
+        list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
         const active = list.filter(g => g.status !== 'inactive' && g.isActive !== false);
-        setGames(active.length > 0 ? active : list);
-      } else {
-        setGames(INITIAL_GAMES.map((g, i) => ({ id: `g_${i}`, ...g })));
+        const finalList = active.length > 0 ? active : list;
+        setGames(finalList);
+        try { localStorage.setItem('tk333_cached_games', JSON.stringify(finalList)); } catch (e) {}
       }
     }, () => {
-      setGames(INITIAL_GAMES.map((g, i) => ({ id: `g_${i}`, ...g })));
+      setGames(prev => prev.length ? prev : INITIAL_GAMES.map((g, i) => ({ id: `g_${i}`, ...g })));
     });
 
-    // Home Ads Listener (Dynamic Home Ad Management)
-    const adsQ = query(collection(db, 'home_ads'), orderBy('order', 'asc'));
-    const unsubAds = onSnapshot(adsQ, (snapshot) => {
+    // Home Ads Listener
+    const unsubAds = onSnapshot(collection(db, 'home_ads'), (snapshot) => {
       if (!snapshot.empty) {
         const list: HomeAdItem[] = [];
         snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as HomeAdItem));
-        setHomeAds(list.filter(a => a.active !== false && a.isActive !== false));
+        list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
+        const finalList = list.filter(a => a.active !== false && a.isActive !== false);
+        setHomeAds(finalList);
+        try { localStorage.setItem('tk333_cached_ads', JSON.stringify(finalList)); } catch (e) {}
       }
     }, () => {});
 
     // Promotions Listener
-    const promoQ = query(collection(db, 'promotions'), orderBy('order', 'asc'));
-    const unsubPromo = onSnapshot(promoQ, (snapshot) => {
+    const unsubPromo = onSnapshot(collection(db, 'promotions'), (snapshot) => {
       if (!snapshot.empty) {
         const list: PromotionItem[] = [];
         snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as PromotionItem));
-        setPromotions(list.filter(p => p.active !== false && p.isActive !== false));
+        list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
+        const finalList = list.filter(p => p.active !== false && p.isActive !== false);
+        setPromotions(finalList);
+        try { localStorage.setItem('tk333_cached_promos', JSON.stringify(finalList)); } catch (e) {}
       }
     }, () => {});
 
@@ -165,6 +211,7 @@ export default function Home({
       if (!snapshot.empty) {
         const docData = snapshot.docs[0].data() as AnnouncementItem;
         setAnnouncementObj(docData);
+        try { localStorage.setItem('tk333_cached_announcement', JSON.stringify(docData)); } catch (e) {}
       }
     }, () => {});
 

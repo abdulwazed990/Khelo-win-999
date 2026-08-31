@@ -350,10 +350,28 @@ export async function seedInitialFirestoreData() {
   hasAttemptedSeed = true;
 
   try {
-    // 0. Check system installation marker. If already installed, NEVER overwrite or seed anything.
+    // 0. Check fast local marker first
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('tk333_installation_seeded') === 'true') {
+      return;
+    }
+
+    // Check system installation marker
     const installMetaRef = doc(db, 'system_meta', 'installation');
-    const installMetaSnap = await getDoc(installMetaRef);
-    if (installMetaSnap.exists()) {
+    let installMetaSnap;
+    try {
+      installMetaSnap = await getDoc(installMetaRef);
+    } catch (e) {
+      // If quota exceeded or error, record locally to prevent continuous retries
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('tk333_installation_seeded', 'true');
+      }
+      return;
+    }
+
+    if (installMetaSnap?.exists()) {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('tk333_installation_seeded', 'true');
+      }
       return;
     }
 

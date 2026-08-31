@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, signOut, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { auth, db, handleFirestoreError, OperationType } from '../firebase';
+import { auth, db, handleFirestoreError, OperationType, isQuotaExceededError } from '../firebase';
+import { safeGetDoc } from '../services/safeFirestore';
 import { useLanguage } from '../context/LanguageContext';
 import { motion } from 'motion/react';
 import { UserPlus, LogIn, Phone, Mail, User as UserIcon, Lock, Eye, EyeOff, AlertCircle, Sparkles } from 'lucide-react';
@@ -35,20 +36,55 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
 
     try {
       if (isLogin) {
-        let loginEmail = contact.trim();
-        if (!loginEmail.includes('@')) {
-          let usernameDoc;
+        let inputVal = contact.trim();
+        let targetEmail = inputVal;
+
+        if (!inputVal.includes('@')) {
+          const cleanUser = inputVal.toLowerCase();
+          
+          // 1. Try safe document lookup from cache/db
           try {
-            usernameDoc = await getDoc(doc(db, 'usernames', loginEmail.toLowerCase()));
-          } catch (err) {
-            handleFirestoreError(err, OperationType.GET, `usernames/${loginEmail}`);
+            const usernameDoc = await safeGetDoc(doc(db, 'usernames', cleanUser));
+            if (usernameDoc.exists() && usernameDoc.data()?.email) {
+              targetEmail = usernameDoc.data()!.email;
+            } else {
+              // Fallback to default user email domain
+              targetEmail = `${cleanUser}@tk333.vip`;
+            }
+          } catch (lookupErr) {
+            // If quota exceeded or network issue, fallback to synthetic email
+            targetEmail = `${cleanUser}@tk333.vip`;
           }
-          if (!usernameDoc?.exists()) {
-            throw new Error(lang === 'bn' ? 'ব্যবহারকারীর নাম খুঁজে পাওয়া যায়নি' : 'Username not found');
-          }
-          loginEmail = usernameDoc.data().email;
         }
-        await signInWithEmailAndPassword(auth, loginEmail, password);
+
+        // Attempt authentication
+        try {
+          await signInWithEmailAndPassword(auth, targetEmail, password);
+        } catch (authErr: any) {
+          // If failed and was username without @, try alternative fallback if possible
+          if (!inputVal.includes('@') && targetEmail.endsWith('@tk333.vip')) {
+            const cleanUser = inputVal.toLowerCase();
+            // Also try plain email format if user registered with Gmail
+            try {
+              await signInWithEmailAndPassword(auth, `${cleanUser}@gmail.com`, password);
+            } catch (err2) {
+              // Throw user-friendly message
+              throw new Error(
+                lang === 'bn' 
+                  ? 'ইউজারনেম অথবা পাসওয়ার্ড সঠিক নয়' 
+                  : 'Invalid username or password'
+              );
+            }
+          } else {
+            if (authErr.code === 'auth/user-not-found' || authErr.code === 'auth/wrong-password' || authErr.code === 'auth/invalid-credential') {
+              throw new Error(lang === 'bn' ? 'ইউজারনেম অথবা পাসওয়ার্ড সঠিক নয়' : 'Invalid email/username or password');
+            } else if (authErr.code === 'auth/too-many-requests') {
+              throw new Error(lang === 'bn' ? 'অনেকবার ভুল চেষ্টা করা হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।' : 'Too many attempts. Please try again in a few moments.');
+            }
+            throw authErr;
+          }
+        }
+
         haptics.success();
         onSuccess();
       } else {
@@ -59,45 +95,65 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
           throw new Error(lang === 'bn' ? 'পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে' : 'Password must be at least 6 characters');
         }
         
-        const cleanUsername = username.trim().toLowerCase();
-        let usernameDoc;
+        const cleanUsername = username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+        if (cleanUsername.length < 3) {
+          throw new Error(lang === 'bn' ? 'ইউজারনেম কমপক্ষে ৩ অক্ষরের হতে হবে' : 'Username must be at least 3 characters');
+        }
+
+        // Safe username check
         try {
-          usernameDoc = await getDoc(doc(db, 'usernames', cleanUsername));
-        } catch (err) {
-          handleFirestoreError(err, OperationType.GET, `usernames/${cleanUsername}`);
-        }
-        if (usernameDoc?.exists()) {
-          throw new Error(lang === 'bn' ? 'এই ইউজারনেমটি ইতিমধ্যে ব্যবহৃত হয়েছে' : 'Username already taken');
-        }
-
-        const email = contactType === 'email' ? contact.trim() : `${cleanUsername}@tk333.vip`;
-        
-        if (contactType === 'email' && !contact.includes('@')) {
-          throw new Error(lang === 'bn' ? 'অনুগ্রহ করে সঠিক ইমেইল প্রদান করুন' : 'Please enter a valid email address');
+          const usernameDoc = await safeGetDoc(doc(db, 'usernames', cleanUsername));
+          if (usernameDoc.exists()) {
+            throw new Error(lang === 'bn' ? 'এই ইউজারনেমটি ইতিমধ্যে ব্যবহৃত হয়েছে' : 'Username already taken');
+          }
+        } catch (uErr: any) {
+          if (uErr.message?.includes('already taken') || uErr.message?.includes('ইতিমধ্যে ব্যবহৃত')) {
+            throw uErr;
+          }
+          // If quota limit or offline, proceed with auth provider check
         }
 
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const email = contactType === 'email' && contact.includes('@') 
+          ? contact.trim().toLowerCase() 
+          : `${cleanUsername}@tk333.vip`;
+
+        let userCredential;
+        try {
+          userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        } catch (createErr: any) {
+          if (createErr.code === 'auth/email-already-in-use') {
+            throw new Error(lang === 'bn' ? 'এই ইউজারনেম বা ইমেইল দিয়ে ইতিমধ্যে একাউন্ট খোলা আছে' : 'This username or email is already registered');
+          }
+          throw createErr;
+        }
+
         const user = userCredential.user;
+        await updateProfile(user, { displayName: name || cleanUsername });
 
-        await updateProfile(user, { displayName: name });
+        const userDataObj = {
+          uid: user.uid,
+          name: name || cleanUsername,
+          username: cleanUsername,
+          phone: contactType === 'phone' ? contact.trim() : '',
+          email: user.email,
+          balance: 10,
+          welcomeBonusClaimed: true,
+          lastDailyBonusAt: '',
+          freeSpins: 0,
+          role: email === 'mohammadabdulwazed1@gmail.com' ? 'admin' : 'user',
+          createdAt: new Date().toISOString()
+        };
 
+        // Cache user data locally immediately
         try {
-          const isAdminUser = email === 'mohammadabdulwazed1@gmail.com';
-          await setDoc(doc(db, 'users', user.uid), {
-            uid: user.uid,
-            name,
-            username: cleanUsername,
-            phone: contactType === 'phone' ? contact.trim() : '',
-            email: user.email,
-            balance: 10,
-            welcomeBonusClaimed: true,
-            lastDailyBonusAt: '',
-            freeSpins: 0,
-            role: isAdminUser ? 'admin' : 'user',
-            createdAt: new Date().toISOString()
-          });
+          localStorage.setItem(`tk333_cached_user_${user.uid}`, JSON.stringify(userDataObj));
+        } catch (lsErr) {}
+
+        // Persist to firestore (graceful if quota limit)
+        try {
+          await setDoc(doc(db, 'users', user.uid), userDataObj);
         } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`);
+          handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`, true);
         }
 
         try {
@@ -106,7 +162,7 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
             uid: user.uid
           });
         } catch (err) {
-          handleFirestoreError(err, OperationType.WRITE, `usernames/${cleanUsername}`);
+          handleFirestoreError(err, OperationType.WRITE, `usernames/${cleanUsername}`, true);
         }
         
         haptics.success();
@@ -137,7 +193,7 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
 
       // Check if user doc exists in database
       const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
+      const userDoc = await safeGetDoc(userDocRef);
       
       if (!userDoc.exists()) {
         const emailPrefix = (user.email?.split('@')[0] || `user_${Date.now().toString().slice(-4)}`)
@@ -146,7 +202,7 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
         const generatedUsername = emailPrefix.length >= 3 ? emailPrefix : `user_${user.uid.slice(0, 5).toLowerCase()}`;
         const isAdminUser = user.email === 'mohammadabdulwazed1@gmail.com';
 
-        await setDoc(userDocRef, {
+        const newProfile = {
           uid: user.uid,
           name: user.displayName || 'TK333 Member',
           username: generatedUsername,
@@ -157,7 +213,17 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
           freeSpins: 0,
           role: isAdminUser ? 'admin' : 'user',
           createdAt: new Date().toISOString()
-        });
+        };
+
+        try {
+          localStorage.setItem(`tk333_cached_user_${user.uid}`, JSON.stringify(newProfile));
+        } catch (lsE) {}
+
+        try {
+          await setDoc(userDocRef, newProfile);
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, `users/${user.uid}`, true);
+        }
 
         try {
           await setDoc(doc(db, 'usernames', generatedUsername), {

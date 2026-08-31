@@ -150,14 +150,14 @@ export async function fetchGameStatus(identifier: string): Promise<GameStatusInf
       isAvailable: true
     };
   } catch (err) {
-    console.error('Error fetching game status:', err);
-    // Security Fail-Safe: If database is unreachable, do not allow uncontrolled entry
+    console.warn('Game status check fallback (database read limit/offline):', err);
+    // Graceful Fail-Safe: Default to ACTIVE so players can continue playing
     return {
       gameId: identifier,
       gameTitle: identifier,
-      status: 'SERVER_ERROR',
-      isAvailable: false,
-      reason: 'Network connectivity or database status check failed. Access blocked for safety.'
+      status: 'ACTIVE',
+      isAvailable: true,
+      reason: ''
     };
   }
 }
@@ -171,58 +171,67 @@ export function subscribeToGameStatus(
 ): () => void {
   const gamesCollection = collection(db, 'games');
 
-  const unsubscribe = onSnapshot(
-    gamesCollection,
-    (snapshot) => {
-      let matchedGame: GameItem | null = null;
-      snapshot.forEach((d) => {
-        const g = { id: d.id, ...d.data() } as GameItem;
-        if (matchGameIdentifier(g, identifier)) {
-          matchedGame = g;
-        }
-      });
-
-      if (matchedGame) {
-        const g = matchedGame as GameItem;
-        const status = normalizeGameStatus(g.status);
-        onUpdate({
-          gameId: g.id,
-          gameTitle: g.title || g.name || identifier,
-          status,
-          isAvailable: status === 'ACTIVE',
-          reason: g.statusReason,
-          maintenanceTitle: g.maintenanceTitle,
-          maintenanceDescription: g.maintenanceDescription,
-          maintenanceEstimatedTime: g.maintenanceEstimatedTime,
-          maintenanceButtonText: g.maintenanceButtonText,
-          updatedAt: g.statusUpdatedAt,
-          updatedBy: g.statusUpdatedBy,
-          game: g
+  try {
+    const unsubscribe = onSnapshot(
+      gamesCollection,
+      (snapshot) => {
+        let matchedGame: GameItem | null = null;
+        snapshot.forEach((d) => {
+          const g = { id: d.id, ...d.data() } as GameItem;
+          if (matchGameIdentifier(g, identifier)) {
+            matchedGame = g;
+          }
         });
-      } else {
-        // If not found in collection, default to active
+
+        if (matchedGame) {
+          const g = matchedGame as GameItem;
+          const status = normalizeGameStatus(g.status);
+          onUpdate({
+            gameId: g.id,
+            gameTitle: g.title || g.name || identifier,
+            status,
+            isAvailable: status === 'ACTIVE',
+            reason: g.statusReason,
+            maintenanceTitle: g.maintenanceTitle,
+            maintenanceDescription: g.maintenanceDescription,
+            maintenanceEstimatedTime: g.maintenanceEstimatedTime,
+            maintenanceButtonText: g.maintenanceButtonText,
+            updatedAt: g.statusUpdatedAt,
+            updatedBy: g.statusUpdatedBy,
+            game: g
+          });
+        } else {
+          // If not found in collection, default to active
+          onUpdate({
+            gameId: identifier,
+            gameTitle: identifier,
+            status: 'ACTIVE',
+            isAvailable: true
+          });
+        }
+      },
+      (error) => {
+        console.warn('Game status subscription fallback notice:', error?.message);
+        // Fail gracefully to active so gameplay is never interrupted
         onUpdate({
           gameId: identifier,
           gameTitle: identifier,
           status: 'ACTIVE',
-          isAvailable: true
+          isAvailable: true,
+          reason: ''
         });
       }
-    },
-    (error) => {
-      console.warn('Game status subscription error:', error);
-      // Fail safe on error
-      onUpdate({
-        gameId: identifier,
-        gameTitle: identifier,
-        status: 'SERVER_ERROR',
-        isAvailable: false,
-        reason: 'Lost connection to game status server.'
-      });
-    }
-  );
-
-  return unsubscribe;
+    );
+    return unsubscribe;
+  } catch (err) {
+    onUpdate({
+      gameId: identifier,
+      gameTitle: identifier,
+      status: 'ACTIVE',
+      isAvailable: true
+    });
+    return () => {};
+  }
 }
 
 /**

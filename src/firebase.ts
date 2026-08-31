@@ -1,28 +1,41 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDocFromCache, getDocFromServer } from 'firebase/firestore';
+import { 
+  getFirestore, 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager,
+  memoryLocalCache,
+  doc, 
+  getDocFromCache, 
+  getDocFromServer 
+} from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-export const auth = getAuth(app);
-export const storage = getStorage(app, firebaseConfig.storageBucket);
 
-// Connection test
-async function testConnection() {
+// Initialize Firestore with robust local caching to reduce read quota consumption
+let firestoreInstance;
+try {
+  firestoreInstance = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
+  }, firebaseConfig.firestoreDatabaseId);
+} catch (e) {
   try {
-    // Try to get a non-existent doc from server to test connection
-    await getDocFromServer(doc(db, '_connection_test_', 'test'));
-    console.log("Firestore connection successful");
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Firestore connection failed: The client is offline. Please check your Firebase configuration and internet connection.");
-    }
+    firestoreInstance = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+  } catch (err2) {
+    firestoreInstance = initializeFirestore(app, {
+      localCache: memoryLocalCache()
+    }, firebaseConfig.firestoreDatabaseId);
   }
 }
 
-testConnection();
+export const db = firestoreInstance;
+export const auth = getAuth(app);
+export const storage = getStorage(app, firebaseConfig.storageBucket);
 
 export enum OperationType {
   CREATE = 'create',
@@ -52,9 +65,26 @@ export interface FirestoreErrorInfo {
   }
 }
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+export function isQuotaExceededError(error: unknown): boolean {
+  if (!error) return false;
+  const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return (
+    msg.includes('quota') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('resource-exhausted') ||
+    msg.includes('free daily read units') ||
+    msg.includes('over-quota') ||
+    msg.includes('rate limit') ||
+    msg.includes('too many requests')
+  );
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null, silent: boolean = false) {
+  const errMsg = error instanceof Error ? error.message : String(error);
+  const isQuota = isQuotaExceededError(error);
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: isQuota ? 'Database daily read limit reached. Local cache and fallback mode active.' : errMsg,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -70,7 +100,14 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     },
     operationType,
     path
+  };
+
+  console.warn(`Firestore Notice [${operationType} @ ${path}]:`, errMsg);
+
+  if (silent || isQuota) {
+    return;
   }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+
+  // Only throw sanitized, readable error messages instead of raw debug blobs
+  throw new Error(isQuota ? 'Database limit temporarily reached. Please retry shortly.' : errMsg);
 }

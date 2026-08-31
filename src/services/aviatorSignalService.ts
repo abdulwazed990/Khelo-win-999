@@ -67,12 +67,25 @@ export function getCleanDomainUrl(path: string = '/#signal'): string {
 
 // Initial Seed for Game Connection and History
 export async function initializeAviatorSignalDefaults() {
+  if (typeof localStorage !== 'undefined' && localStorage.getItem('aviator_signals_initialized') === 'true') {
+    return;
+  }
+
   try {
     const originUrl = getCleanDomainUrl('/#signal');
 
     // 1. Initialize Game Connection if not exists or merge missing properties
     const connDocRef = doc(db, CONNECTIONS_COLLECTION, DEFAULT_GAME_ID);
-    const connSnap = await getDoc(connDocRef);
+    let connSnap;
+    try {
+      connSnap = await getDoc(connDocRef);
+    } catch (e) {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('aviator_signals_initialized', 'true');
+      }
+      return;
+    }
+
     if (!connSnap.exists()) {
       const defaultConn: SignalGameConnection = {
         id: DEFAULT_GAME_ID,
@@ -191,8 +204,12 @@ export async function initializeAviatorSignalDefaults() {
         startTime: new Date().toISOString()
       });
     }
+
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('aviator_signals_initialized', 'true');
+    }
   } catch (err) {
-    console.error('Error initializing Aviator Signal defaults:', err);
+    console.warn('Aviator signal initialization notice:', err);
   }
 }
 

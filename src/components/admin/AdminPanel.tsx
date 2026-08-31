@@ -402,10 +402,10 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
   // 1. Listen to Banners
   useEffect(() => {
-    const q = query(collection(db, 'banners'), orderBy('order', 'asc'));
-    const unsub = onSnapshot(q, (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'banners'), (snapshot) => {
       const list: BannerItem[] = [];
       snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as BannerItem));
+      list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
       setBanners(list);
     }, (err) => console.warn('Banners load error', err));
     return () => unsub();
@@ -413,10 +413,10 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
   // 2. Listen to Home Ads
   useEffect(() => {
-    const q = query(collection(db, 'home_ads'), orderBy('order', 'asc'));
-    const unsub = onSnapshot(q, (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'home_ads'), (snapshot) => {
       const list: HomeAdItem[] = [];
       snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as HomeAdItem));
+      list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
       setHomeAds(list);
     }, (err) => console.warn('Home ads error', err));
     return () => unsub();
@@ -424,10 +424,10 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
   // 3. Listen to Games
   useEffect(() => {
-    const q = query(collection(db, 'games'), orderBy('order', 'asc'));
-    const unsub = onSnapshot(q, (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'games'), (snapshot) => {
       const list: GameItem[] = [];
       snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as GameItem));
+      list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
       setGames(list);
     }, (err) => console.warn('Games load error', err));
     return () => unsub();
@@ -435,10 +435,10 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
   // 4. Listen to Categories
   useEffect(() => {
-    const q = query(collection(db, 'categories'), orderBy('order', 'asc'));
-    const unsub = onSnapshot(q, (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'categories'), (snapshot) => {
       const list: CategoryItem[] = [];
       snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as CategoryItem));
+      list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
       setCategories(list);
     }, (err) => console.warn('Categories load error', err));
     return () => unsub();
@@ -446,10 +446,10 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
   // 5. Listen to Promotions
   useEffect(() => {
-    const q = query(collection(db, 'promotions'), orderBy('order', 'asc'));
-    const unsub = onSnapshot(q, (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'promotions'), (snapshot) => {
       const list: PromotionItem[] = [];
       snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as PromotionItem));
+      list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
       setPromotions(list);
     }, (err) => console.warn('Promotions load error', err));
     return () => unsub();
@@ -457,10 +457,10 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
   // 6. Listen to Payment Methods
   useEffect(() => {
-    const q = query(collection(db, 'payment_methods'), orderBy('sortOrder', 'asc'));
-    const unsub = onSnapshot(q, (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'payment_methods'), (snapshot) => {
       const list: PaymentMethodConfig[] = [];
       snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as PaymentMethodConfig));
+      list.sort((a, b) => (Number(a.sortOrder ?? 999) - Number(b.sortOrder ?? 999)));
       setPaymentMethods(list);
     }, (err) => console.warn('Payment methods error', err));
     return () => unsub();
