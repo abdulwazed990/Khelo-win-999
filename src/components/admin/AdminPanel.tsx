@@ -496,10 +496,10 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
   // 9. Listen to Transactions
   useEffect(() => {
-    const q = query(collection(db, 'transactions'), orderBy('createdAt', 'desc'));
-    const unsub = onSnapshot(q, (snapshot) => {
+    const unsub = onSnapshot(collection(db, 'transactions'), (snapshot) => {
       const list: Transaction[] = [];
       snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as Transaction));
+      list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       setTransactions(list);
       setLoading(false);
     }, (err) => {
@@ -904,13 +904,18 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
     try {
       const mId = editingPaymentMethod.id || `pm_${editingPaymentMethod.methodId.toLowerCase()}`;
       const docRef = doc(db, 'payment_methods', mId);
+      const accNums = Array.isArray(editingPaymentMethod.accountNumbers)
+        ? editingPaymentMethod.accountNumbers.filter(n => n && n.trim().length > 0)
+        : (editingPaymentMethod.accountNumber ? [editingPaymentMethod.accountNumber] : []);
+
       const dataToSave = {
         methodId: editingPaymentMethod.methodId.toLowerCase(),
         name: editingPaymentMethod.name,
         nameBn: editingPaymentMethod.nameBn || editingPaymentMethod.name,
         iconUrl: editingPaymentMethod.iconUrl || '',
         storagePath: editingPaymentMethod.storagePath || '',
-        accountNumber: editingPaymentMethod.accountNumber || '',
+        accountNumber: accNums[0] || editingPaymentMethod.accountNumber || '',
+        accountNumbers: accNums,
         status: editingPaymentMethod.status || 'active',
         sortOrder: Number(editingPaymentMethod.sortOrder) || (paymentMethods.length + 1),
         updatedAt: new Date().toISOString()
@@ -3282,36 +3287,154 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                   </div>
                 </div>
 
-                {/* SECTION 4: PAYMENT DEPOSIT NUMBERS */}
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                  <div className="text-xs font-black font-chakra text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
-                    <CreditCard size={14} className="text-blue-600" />
-                    <span>{lang === 'bn' ? '৪. ডিপোজিট একাউন্ট নম্বর' : '4. Payment Deposit Numbers'}</span>
+                {/* SECTION 4: PAYMENT DEPOSIT NUMBERS (UP TO 10 BKASH & 10 NAGAD WITH SHUFFLE) */}
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-black font-chakra text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                      <CreditCard size={14} className="text-blue-600" />
+                      <span>{lang === 'bn' ? '৪. ডিপোজিট একাউন্ট নম্বর (১০টি বিকাশ ও ১০টি নগদ শাফল)' : '4. Deposit Numbers (10 bKash & 10 Nagad with Shuffle)'}</span>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full border border-emerald-200">
+                      {lang === 'bn' ? 'অটো-শাফল সক্রিয়' : 'Auto-Shuffle Active'}
+                    </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-700 uppercase">বিকাশ নম্বর (bKash):</label>
-                      <input
-                        type="text"
-                        value={settings?.depositBkashNumber ?? '01641404837'}
-                        onChange={(e) => setSettings(prev => ({ ...prev, depositBkashNumber: e.target.value }))}
-                        placeholder="01641404837"
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-mono font-bold"
-                      />
+                  <p className="text-[11px] text-slate-600">
+                    {lang === 'bn' 
+                      ? 'এখানে আপনি প্রতি মেথডের জন্য ১০টি পর্যন্ত নম্বর দিতে পারেন। ডিপোজিট পেজে প্রতিবার ইউজারদের কাছে এই নম্বরগুলো এলোমেলোভাবে (Shuffle) ঘুরিয়ে ঘুরিয়ে প্রদর্শিত হবে।' 
+                      : 'You can add up to 10 numbers per method. These numbers will automatically rotate/shuffle for users on the deposit screen.'}
+                  </p>
+
+                  {/* 10 bKash Numbers Grid */}
+                  <div className="p-3.5 bg-pink-50/60 border border-pink-200 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-pink-700 uppercase flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-pink-600 inline-block"></span>
+                        {lang === 'bn' ? 'বিকাশ ডিপোজিট নম্বরসমূহ (১ থেকে ১০):' : 'bKash Deposit Numbers (1 to 10):'}
+                      </span>
+                      <span className="text-[10px] font-bold text-pink-600">
+                        {((settings?.depositBkashNumbers || (settings?.depositBkashNumber ? [settings.depositBkashNumber] : [])).filter(Boolean).length) || 1} / 10 Active
+                      </span>
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-700 uppercase">নগদ নম্বর (Nagad):</label>
-                      <input
-                        type="text"
-                        value={settings?.depositNagadNumber ?? '01641404837'}
-                        onChange={(e) => setSettings(prev => ({ ...prev, depositNagadNumber: e.target.value }))}
-                        placeholder="01641404837"
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-mono font-bold"
-                      />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {Array.from({ length: 10 }).map((_, idx) => {
+                        const existingList = Array.isArray(settings?.depositBkashNumbers) 
+                          ? [...settings.depositBkashNumbers] 
+                          : (settings?.depositBkashNumber ? [settings.depositBkashNumber] : []);
+                        const currentVal = existingList[idx] || (idx === 0 && !existingList.length ? (settings?.depositBkashNumber || '01641404837') : '');
+
+                        return (
+                          <div key={`bkash_${idx}`} className="flex items-center gap-1.5 bg-white p-1.5 rounded-xl border border-pink-200">
+                            <span className="w-6 h-6 rounded-lg bg-pink-100 text-pink-700 font-mono font-bold text-[10px] flex items-center justify-center shrink-0">
+                              #{idx + 1}
+                            </span>
+                            <input
+                              type="text"
+                              value={currentVal}
+                              placeholder={idx === 0 ? "01XXXXXXXXX (প্রধান নম্বর)" : `বিকাশ নম্বর ${idx + 1}`}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const nextArr = [...existingList];
+                                while (nextArr.length <= idx) nextArr.push('');
+                                nextArr[idx] = val;
+                                setSettings(prev => ({
+                                  ...prev,
+                                  depositBkashNumbers: nextArr,
+                                  depositBkashNumber: nextArr.find(n => n.trim().length > 0) || '01641404837'
+                                }));
+                              }}
+                              className="w-full px-2 py-1 bg-transparent text-xs font-mono font-bold text-slate-900 focus:outline-hidden"
+                            />
+                            {currentVal && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextArr = [...existingList];
+                                  nextArr[idx] = '';
+                                  setSettings(prev => ({
+                                    ...prev,
+                                    depositBkashNumbers: nextArr,
+                                    depositBkashNumber: nextArr.find(n => n.trim().length > 0) || '01641404837'
+                                  }));
+                                }}
+                                className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                              >
+                                <X size={12} />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 10 Nagad Numbers Grid */}
+                  <div className="p-3.5 bg-amber-50/60 border border-amber-200 rounded-2xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-amber-700 uppercase flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-600 inline-block"></span>
+                        {lang === 'bn' ? 'নগদ ডিপোজিট নম্বরসমূহ (১ থেকে ১০):' : 'Nagad Deposit Numbers (1 to 10):'}
+                      </span>
+                      <span className="text-[10px] font-bold text-amber-600">
+                        {((settings?.depositNagadNumbers || (settings?.depositNagadNumber ? [settings.depositNagadNumber] : [])).filter(Boolean).length) || 1} / 10 Active
+                      </span>
                     </div>
 
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {Array.from({ length: 10 }).map((_, idx) => {
+                        const existingList = Array.isArray(settings?.depositNagadNumbers) 
+                          ? [...settings.depositNagadNumbers] 
+                          : (settings?.depositNagadNumber ? [settings.depositNagadNumber] : []);
+                        const currentVal = existingList[idx] || (idx === 0 && !existingList.length ? (settings?.depositNagadNumber || '01641404837') : '');
+
+                        return (
+                          <div key={`nagad_${idx}`} className="flex items-center gap-1.5 bg-white p-1.5 rounded-xl border border-amber-200">
+                            <span className="w-6 h-6 rounded-lg bg-amber-100 text-amber-700 font-mono font-bold text-[10px] flex items-center justify-center shrink-0">
+                              #{idx + 1}
+                            </span>
+                            <input
+                              type="text"
+                              value={currentVal}
+                              placeholder={idx === 0 ? "01XXXXXXXXX (প্রধান নম্বর)" : `নগদ নম্বর ${idx + 1}`}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const nextArr = [...existingList];
+                                while (nextArr.length <= idx) nextArr.push('');
+                                nextArr[idx] = val;
+                                setSettings(prev => ({
+                                  ...prev,
+                                  depositNagadNumbers: nextArr,
+                                  depositNagadNumber: nextArr.find(n => n.trim().length > 0) || '01641404837'
+                                }));
+                              }}
+                              className="w-full px-2 py-1 bg-transparent text-xs font-mono font-bold text-slate-900 focus:outline-hidden"
+                            />
+                            {currentVal && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextArr = [...existingList];
+                                  nextArr[idx] = '';
+                                  setSettings(prev => ({
+                                    ...prev,
+                                    depositNagadNumbers: nextArr,
+                                    depositNagadNumber: nextArr.find(n => n.trim().length > 0) || '01641404837'
+                                  }));
+                                }}
+                                className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                              >
+                                <X size={12} />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Rocket & Upay Single Numbers */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-slate-700 uppercase">রকেট নম্বর (Rocket):</label>
                       <input

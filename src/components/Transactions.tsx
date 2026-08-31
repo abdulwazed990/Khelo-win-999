@@ -59,13 +59,47 @@ export default function Transactions({ userData, user }: TransactionsProps) {
   const [copiedNum, setCopiedNum] = useState(false);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [customPaymentMethods, setCustomPaymentMethods] = useState<PaymentMethodConfig[]>([]);
+  // Shuffled active numbers mapped by methodId
+  const [shuffledNumbers, setShuffledNumbers] = useState<Record<string, string>>({});
 
   useEffect(() => {
     async function loadSettings() {
       try {
         const snap = await getDoc(doc(db, 'settings', 'site'));
         if (snap.exists()) {
-          setSettings(snap.data() as SiteSettings);
+          const siteData = snap.data() as SiteSettings;
+          setSettings(siteData);
+
+          // Calculate initial random shuffle for bKash and Nagad
+          const bkashPool = (Array.isArray(siteData.depositBkashNumbers) 
+            ? siteData.depositBkashNumbers.filter(n => n && n.trim().length > 0)
+            : []
+          );
+          if (bkashPool.length === 0 && siteData.depositBkashNumber) {
+            bkashPool.push(siteData.depositBkashNumber);
+          }
+
+          const nagadPool = (Array.isArray(siteData.depositNagadNumbers)
+            ? siteData.depositNagadNumbers.filter(n => n && n.trim().length > 0)
+            : []
+          );
+          if (nagadPool.length === 0 && siteData.depositNagadNumber) {
+            nagadPool.push(siteData.depositNagadNumber);
+          }
+
+          const randomBkash = bkashPool.length > 0
+            ? bkashPool[Math.floor(Math.random() * bkashPool.length)]
+            : (siteData.depositBkashNumber || '01641404837');
+
+          const randomNagad = nagadPool.length > 0
+            ? nagadPool[Math.floor(Math.random() * nagadPool.length)]
+            : (siteData.depositNagadNumber || '01641404837');
+
+          setShuffledNumbers(prev => ({
+            ...prev,
+            bkash: randomBkash,
+            nagad: randomNagad
+          }));
         }
       } catch (err) {
         console.warn('Could not load site settings:', err);
@@ -82,6 +116,18 @@ export default function Transactions({ userData, user }: TransactionsProps) {
         const activeList = list.filter(m => m.status === 'active' && m.methodId !== 'rocket');
         if (activeList.length > 0) {
           setCustomPaymentMethods(activeList);
+
+          // Update shuffled map if custom payment method has multiple numbers
+          const newShuffles: Record<string, string> = {};
+          activeList.forEach(m => {
+            const pool = (Array.isArray(m.accountNumbers) && m.accountNumbers.length > 0)
+              ? m.accountNumbers.filter(n => n && n.trim().length > 0)
+              : (m.accountNumber ? [m.accountNumber] : []);
+            if (pool.length > 0) {
+              newShuffles[m.methodId] = pool[Math.floor(Math.random() * pool.length)];
+            }
+          });
+          setShuffledNumbers(prev => ({ ...prev, ...newShuffles }));
         }
       }
     }, () => {});
@@ -89,9 +135,43 @@ export default function Transactions({ userData, user }: TransactionsProps) {
     return () => unsub();
   }, []);
 
+  // When switching payment methods or opening deposit, pick a shuffled number from the pool
+  const pickShuffledNumberForMethod = (targetMethod: string) => {
+    const customMethod = customPaymentMethods.find(m => m.methodId === targetMethod);
+    let pool: string[] = [];
+
+    if (customMethod && Array.isArray(customMethod.accountNumbers) && customMethod.accountNumbers.length > 0) {
+      pool = customMethod.accountNumbers.filter(n => n && n.trim().length > 0);
+    } else if (targetMethod === 'bkash') {
+      pool = Array.isArray(settings?.depositBkashNumbers) 
+        ? settings.depositBkashNumbers.filter(n => n && n.trim().length > 0) 
+        : [];
+      if (pool.length === 0 && settings?.depositBkashNumber) {
+        pool.push(settings.depositBkashNumber);
+      }
+    } else if (targetMethod === 'nagad') {
+      pool = Array.isArray(settings?.depositNagadNumbers) 
+        ? settings.depositNagadNumbers.filter(n => n && n.trim().length > 0) 
+        : [];
+      if (pool.length === 0 && settings?.depositNagadNumber) {
+        pool.push(settings.depositNagadNumber);
+      }
+    }
+
+    if (pool.length > 0) {
+      const selected = pool[Math.floor(Math.random() * pool.length)];
+      setShuffledNumbers(prev => ({ ...prev, [targetMethod]: selected }));
+      return selected;
+    }
+
+    const fallback = customMethod?.accountNumber || (targetMethod === 'nagad' ? (settings?.depositNagadNumber || '01641404837') : (settings?.depositBkashNumber || '01641404837'));
+    setShuffledNumbers(prev => ({ ...prev, [targetMethod]: fallback }));
+    return fallback;
+  };
+
   const activeMethodObj = customPaymentMethods.find(m => m.methodId === method);
 
-  const activeNumber = activeMethodObj?.accountNumber || (
+  const activeNumber = shuffledNumbers[method] || activeMethodObj?.accountNumber || (
     method === 'nagad' 
       ? (settings?.depositNagadNumber || '01641404837')
       : (settings?.depositBkashNumber || '01641404837')
@@ -314,6 +394,7 @@ export default function Transactions({ userData, user }: TransactionsProps) {
                   onClick={() => {
                     haptics.selection();
                     setMethod(m.methodId);
+                    pickShuffledNumberForMethod(m.methodId);
                   }}
                   className={`p-4 sm:p-5 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-2.5 relative ${
                     isSelected 

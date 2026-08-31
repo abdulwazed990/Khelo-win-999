@@ -138,25 +138,30 @@ export default function MemberProfile({ user, userData, onNavigate }: MemberProf
 
       {/* Profile Navigation Options */}
       <div className="bg-white border border-slate-200 rounded-3xl p-3 space-y-1 shadow-sm">
-        {/* Subtle System Diagnostics Shortcut */}
+        {/* Prominent Admin Panel Portal for Admin / Site Owner */}
         <button
           onClick={() => {
             haptics.selection();
             onNavigate('admin');
           }}
-          className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-600 transition-all mb-1 border border-slate-100 group"
+          className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-blue-900 transition-all mb-1 border border-blue-200 shadow-xs group"
         >
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-slate-200 text-slate-600 flex items-center justify-center">
-              <Sliders size={16} />
+            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
+              <Sliders size={18} />
             </div>
             <div className="text-left">
-              <span className="block font-chakra font-bold text-slate-700 text-xs">
-                {lang === 'bn' ? 'সিস্টেম স্ট্যাটাস ও ডায়াগনস্টিকস' : 'System Telemetry & Diagnostics'}
+              <span className="block font-chakra font-black text-blue-950 text-xs sm:text-sm">
+                {lang === 'bn' ? 'অ্যাডমিন প্যানেল ও সেটিংস' : 'Admin Management Panel'}
+              </span>
+              <span className="text-[10px] text-blue-700 font-semibold block">
+                {lang === 'bn' ? 'লোগো, ব্যানার, বিকাশ/নগদ নম্বর ও গেম কন্ট্রোল' : 'Logo, Banners, bKash/Nagad & Game Controls'}
               </span>
             </div>
           </div>
-          <ChevronRight size={16} className="text-slate-400" />
+          <span className="px-2 py-0.5 bg-blue-600 text-white rounded-full text-[10px] font-black uppercase tracking-wider">
+            ADMIN
+          </span>
         </button>
 
         <button

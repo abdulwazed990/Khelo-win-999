@@ -257,6 +257,7 @@ export interface PaymentMethodConfig {
   status: 'active' | 'inactive';
   sortOrder: number;
   accountNumber?: string;
+  accountNumbers?: string[]; // Multiple numbers for shuffle rotation
   accountType?: 'agent' | 'personal' | 'merchant';
   minDeposit?: number;
   maxDeposit?: number;
@@ -303,6 +304,10 @@ export interface SiteSettings {
   depositNagadNumber?: string;
   depositRocketNumber?: string;
   depositUpayNumber?: string;
+  depositBkashNumbers?: string[]; // Up to 10 bKash numbers for shuffle/rotation
+  depositNagadNumbers?: string[]; // Up to 10 Nagad numbers for shuffle/rotation
+  depositRocketNumbers?: string[];
+  depositUpayNumbers?: string[];
   configVersion?: number;
   updatedAt?: string;
   updatedBy?: string;

@@ -15,22 +15,14 @@ import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore with robust local caching to reduce read quota consumption
+// Initialize Firestore cleanly
 let firestoreInstance;
 try {
   firestoreInstance = initializeFirestore(app, {
-    localCache: persistentLocalCache({
-      tabManager: persistentMultipleTabManager()
-    })
+    localCache: memoryLocalCache()
   }, firebaseConfig.firestoreDatabaseId);
 } catch (e) {
-  try {
-    firestoreInstance = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-  } catch (err2) {
-    firestoreInstance = initializeFirestore(app, {
-      localCache: memoryLocalCache()
-    }, firebaseConfig.firestoreDatabaseId);
-  }
+  firestoreInstance = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 }
 
 export const db = firestoreInstance;
