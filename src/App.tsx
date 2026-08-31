@@ -391,6 +391,7 @@ export default function App() {
           <Home
             user={user}
             userData={userData}
+            settings={settings}
             setCurrentPage={handleNavigate}
             onAuthTrigger={handleOpenAuth}
             searchQuery=""
@@ -425,6 +426,7 @@ export default function App() {
           <Home
             user={user}
             userData={userData}
+            settings={settings}
             setCurrentPage={handleNavigate}
             onAuthTrigger={handleOpenAuth}
             onOpenSearch={() => setShowSearchModal(true)}

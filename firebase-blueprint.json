@@ -216,6 +216,30 @@
         "metadata": { "type": "string" }
       },
       "required": ["id", "action", "timestamp"]
+    },
+    "AdminAuditLog": {
+      "title": "AdminAuditLog",
+      "description": "Persistent audit trail of admin configuration changes.",
+      "type": "object",
+      "properties": {
+        "action": { "type": "string" },
+        "targetType": { "type": "string" },
+        "targetId": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["action", "targetType", "targetId", "adminEmail", "timestamp"]
+    },
+    "SystemMeta": {
+      "title": "SystemMeta",
+      "description": "System state and installation metadata.",
+      "type": "object",
+      "properties": {
+        "initialized": { "type": "boolean" },
+        "version": { "type": "number" }
+      },
+      "required": ["initialized"]
     }
   },
   "firestore": {
@@ -278,6 +302,14 @@
     "/signal_logs/{logId}": {
       "schema": "SignalLog",
       "description": "Activity and connection logs."
+    },
+    "/admin_audit_logs/{logId}": {
+      "schema": "AdminAuditLog",
+      "description": "Admin configuration and status audit logs."
+    },
+    "/system_meta/{metaId}": {
+      "schema": "SystemMeta",
+      "description": "System state and initialization."
     }
   }
 }

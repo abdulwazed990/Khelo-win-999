@@ -91,23 +91,33 @@ export default function TK333Header({
               }}
               className="flex items-center gap-1.5 cursor-pointer select-none group shrink-0"
             >
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-600 flex items-center justify-center p-0.5 shadow-sm group-hover:scale-105 transition-transform shrink-0">
-                <div className="w-full h-full bg-slate-900 rounded-[9px] flex items-center justify-center">
-                  <span className="font-chakra font-black text-[11px] sm:text-xs text-amber-400 tracking-tighter">
-                    TK
-                  </span>
-                </div>
-              </div>
+              {settings?.logoUrl ? (
+                <img 
+                  src={settings.logoUrl} 
+                  alt={brandName}
+                  className="h-8 max-w-[130px] object-contain group-hover:scale-105 transition-transform" 
+                />
+              ) : (
+                <>
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-600 flex items-center justify-center p-0.5 shadow-sm group-hover:scale-105 transition-transform shrink-0">
+                    <div className="w-full h-full bg-slate-900 rounded-[9px] flex items-center justify-center">
+                      <span className="font-chakra font-black text-[11px] sm:text-xs text-amber-400 tracking-tighter">
+                        {brandName.substring(0, 2).toUpperCase() || 'TK'}
+                      </span>
+                    </div>
+                  </div>
 
-              <div className="flex flex-col shrink min-w-0">
-                <span className="font-chakra font-black text-base sm:text-lg tracking-tight leading-none text-slate-900 flex items-center">
-                  {brandName}
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 ml-1"></span>
-                </span>
-                <span className="text-[7px] sm:text-[8px] font-bold text-blue-600 tracking-wider uppercase truncate">
-                  {lang === 'bn' ? 'ক্যাসিনো' : 'CASINO'}
-                </span>
-              </div>
+                  <div className="flex flex-col shrink min-w-0">
+                    <span className="font-chakra font-black text-base sm:text-lg tracking-tight leading-none text-slate-900 flex items-center">
+                      {brandName}
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 ml-1"></span>
+                    </span>
+                    <span className="text-[7px] sm:text-[8px] font-bold text-blue-600 tracking-wider uppercase truncate">
+                      {lang === 'bn' ? 'ক্যাসিনো' : 'CASINO'}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 

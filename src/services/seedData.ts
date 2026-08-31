@@ -1,6 +1,8 @@
-import { collection, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, getDoc, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { BannerItem, CategoryItem, GameItem, PromotionItem, AnnouncementItem, SiteSettings } from '../types';
+
+let hasAttemptedSeed = false;
 
 export const INITIAL_BANNERS: Omit<BannerItem, 'id'>[] = [
   {
@@ -344,8 +346,31 @@ export const INITIAL_SETTINGS: SiteSettings = {
 };
 
 export async function seedInitialFirestoreData() {
+  if (hasAttemptedSeed) return;
+  hasAttemptedSeed = true;
+
   try {
-    // 1. Check & seed banners
+    // 0. Check system installation marker. If already installed, NEVER overwrite or seed anything.
+    const installMetaRef = doc(db, 'system_meta', 'installation');
+    const installMetaSnap = await getDoc(installMetaRef);
+    if (installMetaSnap.exists()) {
+      return;
+    }
+
+    // 1. Check & seed site settings ONLY IF doc does not exist
+    const settingsDoc = doc(db, 'settings', 'site');
+    const settingsSnap = await getDoc(settingsDoc);
+    if (!settingsSnap.exists()) {
+      await setDoc(settingsDoc, {
+        ...INITIAL_SETTINGS,
+        configVersion: 1,
+        createdAt: serverTimestamp(),
+        updatedAt: new Date().toISOString(),
+        updatedBy: 'initial_setup'
+      });
+    }
+
+    // 2. Check & seed banners ONLY IF collection is empty
     const bannersSnap = await getDocs(collection(db, 'banners'));
     if (bannersSnap.empty) {
       for (let i = 0; i < INITIAL_BANNERS.length; i++) {
@@ -359,19 +384,21 @@ export async function seedInitialFirestoreData() {
       }
     }
 
-    // 2. Check & seed categories
+    // 3. Check & seed categories ONLY IF collection is empty
     const categoriesSnap = await getDocs(collection(db, 'categories'));
     if (categoriesSnap.empty) {
       for (let i = 0; i < INITIAL_CATEGORIES.length; i++) {
         const id = `cat_${INITIAL_CATEGORIES[i].slug}`;
         await setDoc(doc(db, 'categories', id), {
           id,
-          ...INITIAL_CATEGORIES[i]
+          ...INITIAL_CATEGORIES[i],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
         });
       }
     }
 
-    // 3. Check & seed games
+    // 4. Check & seed games ONLY IF collection is empty
     const gamesSnap = await getDocs(collection(db, 'games'));
     if (gamesSnap.empty) {
       for (let i = 0; i < INITIAL_GAMES.length; i++) {
@@ -379,13 +406,15 @@ export async function seedInitialFirestoreData() {
         await setDoc(doc(db, 'games', id), {
           id,
           ...INITIAL_GAMES[i],
+          status: 'ACTIVE',
+          gameStatus: 'ACTIVE',
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
       }
     }
 
-    // 4. Check & seed promotions
+    // 5. Check & seed promotions ONLY IF collection is empty
     const promosSnap = await getDocs(collection(db, 'promotions'));
     if (promosSnap.empty) {
       for (let i = 0; i < INITIAL_PROMOTIONS.length; i++) {
@@ -399,7 +428,7 @@ export async function seedInitialFirestoreData() {
       }
     }
 
-    // 5. Check & seed announcement
+    // 6. Check & seed announcement ONLY IF collection is empty
     const annSnap = await getDocs(collection(db, 'announcements'));
     if (annSnap.empty) {
       await setDoc(doc(db, 'announcements', 'main_marquee'), {
@@ -410,9 +439,12 @@ export async function seedInitialFirestoreData() {
       });
     }
 
-    // 6. Check & seed site settings
-    const settingsDoc = doc(db, 'settings', 'site');
-    await setDoc(settingsDoc, INITIAL_SETTINGS, { merge: true });
+    // Mark installation as completed so seeding NEVER runs again
+    await setDoc(installMetaRef, {
+      initialized: true,
+      installedAt: serverTimestamp(),
+      version: 1
+    });
 
   } catch (err) {
     console.warn('Seed data initialization note:', err);

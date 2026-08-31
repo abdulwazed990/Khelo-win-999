@@ -38,10 +38,12 @@ import { INITIAL_BANNERS, INITIAL_GAMES, INITIAL_CATEGORIES, seedInitialFirestor
 import { haptics } from '../utils/haptics';
 import { normalizeGameStatus, isGameStatusAvailable, NormalizedGameStatus } from '../services/gameStatusService';
 import GameMaintenanceScreen from './GameMaintenanceScreen';
+import { SiteSettings } from '../types';
 
 interface HomeProps {
   user: User | null;
   userData: UserData | null;
+  settings?: SiteSettings | null;
   setCurrentPage: (page: string) => void;
   onAuthTrigger: (mode: 'login' | 'signup') => void;
   searchQuery?: string;
@@ -62,6 +64,7 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
 export default function Home({
   user,
   userData,
+  settings,
   setCurrentPage,
   onAuthTrigger,
   searchQuery = '',
@@ -726,7 +729,84 @@ export default function Home({
         </div>
       </div>
 
-      {/* 8. Interactive Slot Simulator Modal for Unrouted Games */}
+      {/* 8. Trust & Payment Methods Banner */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+          <span className="text-[11px] font-bold font-chakra text-slate-700 uppercase tracking-wider">
+            {lang === 'bn' ? 'নিরাপদ পেমেন্ট মেথড ও অটো ডিপোজিট' : 'Secure Payment Methods'}
+          </span>
+          <span className="text-[10px] font-mono text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+            24/7 LIVE
+          </span>
+        </div>
+
+        <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+          {[
+            { name: 'bKash', color: 'bg-[#D12053]/10 text-[#D12053] border-[#D12053]/30' },
+            { name: 'Nagad', color: 'bg-[#E31B23]/10 text-[#E31B23] border-[#E31B23]/30' },
+            { name: 'Rocket', color: 'bg-[#8A257D]/10 text-[#8A257D] border-[#8A257D]/30' },
+            { name: 'Upay', color: 'bg-[#005BAC]/10 text-[#005BAC] border-[#005BAC]/30' },
+            { name: 'USDT (TRC20)', color: 'bg-emerald-500/10 text-emerald-700 border-emerald-300' }
+          ].map((pm, idx) => (
+            <div key={idx} className={`py-2 px-1 rounded-xl text-center font-chakra font-black text-[10px] sm:text-xs border ${pm.color} flex items-center justify-center`}>
+              {pm.name}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 9. Official Brand Footer */}
+      <footer className="mt-4 pt-4 border-t border-slate-200/80 text-center space-y-3 pb-4">
+        {/* Support Channels */}
+        <div className="flex flex-wrap items-center justify-center gap-2 text-xs">
+          {settings?.supportWhatsapp && (
+            <a
+              href={`https://wa.me/${settings.supportWhatsapp.replace(/[^0-9]/g, '')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl border border-emerald-200 font-bold font-chakra flex items-center gap-1.5 transition-all text-[11px]"
+            >
+              WhatsApp Support
+            </a>
+          )}
+          {settings?.telegramChannel && (
+            <a
+              href={settings.telegramChannel.startsWith('http') ? settings.telegramChannel : `https://t.me/${settings.telegramChannel.replace('@', '')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl border border-blue-200 font-bold font-chakra flex items-center gap-1.5 transition-all text-[11px]"
+            >
+              Telegram Official
+            </a>
+          )}
+        </div>
+
+        {/* Custom Footer Description */}
+        <p className="text-[11px] text-slate-500 max-w-xl mx-auto leading-relaxed">
+          {lang === 'bn' 
+            ? (settings?.footerTextBn || 'TK333 বাংলাদেশের বিশ্বস্ত প্রিমিয়াম লাইভ ক্যাসিনো ও এভিয়েটর গেমিং প্ল্যাটফর্ম। ১৮ বছরের ঊর্ধ্বে খেলোয়াড়দের জন্য অনুমোদিত।')
+            : (settings?.footerTextEn || 'TK333 is Bangladesh’s most trusted online casino & gaming platform. Strictly 18+. Play responsibly.')}
+        </p>
+
+        {/* Badges */}
+        <div className="flex items-center justify-center gap-3 text-[10px] text-slate-400 font-medium">
+          <span className="flex items-center gap-1 bg-slate-200/60 px-2 py-0.5 rounded-full text-slate-600 font-bold">
+            🔞 18+ Only
+          </span>
+          <span className="flex items-center gap-1 bg-slate-200/60 px-2 py-0.5 rounded-full text-slate-600 font-bold">
+            🛡️ SSL Encrypted
+          </span>
+          <span className="flex items-center gap-1 bg-slate-200/60 px-2 py-0.5 rounded-full text-slate-600 font-bold">
+            ⚡ Anti-Reset Active
+          </span>
+        </div>
+
+        <div className="text-[10px] font-mono text-slate-400">
+          © {new Date().getFullYear()} {settings?.brandName || 'TK333'}. All rights reserved.
+        </div>
+      </footer>
+
+      {/* 10. Interactive Slot Simulator Modal for Unrouted Games */}
       <AnimatePresence>
         {playingSimGame && (
           <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">

@@ -268,9 +268,18 @@ export interface PaymentMethodConfig {
 
 export interface SiteSettings {
   brandName?: string;
+  websiteName?: string;
   logoUrl?: string;
   logoStoragePath?: string;
   faviconUrl?: string;
+  heroCover?: string;
+  heroCoverStoragePath?: string;
+  heroTitle?: string;
+  heroTitleBn?: string;
+  heroSubtitle?: string;
+  heroSubtitleBn?: string;
+  currencySymbol?: string; // Default: '৳'
+  currencyCode?: string; // Default: 'BDT'
   defaultLanguage?: 'bn' | 'en';
   theme?: string;
   globalWinProbability?: number; // Centralized Win Probability for all games (default 5%)
@@ -283,6 +292,10 @@ export interface SiteSettings {
   facebookUrl?: string;
   supportEnabled?: boolean;
   maintenanceMode?: boolean;
+  maintenanceTitle?: string;
+  maintenanceTitleBn?: string;
+  maintenanceMessage?: string;
+  maintenanceMessageBn?: string;
   footerText?: string;
   footerTextBn?: string;
   footerTextEn?: string;
@@ -290,6 +303,23 @@ export interface SiteSettings {
   depositNagadNumber?: string;
   depositRocketNumber?: string;
   depositUpayNumber?: string;
+  configVersion?: number;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export interface AdminAuditEntry {
+  id?: string;
+  action: string;
+  targetType: 'SITE_SETTINGS' | 'GAME' | 'BANNER' | 'CATEGORY' | 'PROMOTION' | 'PAYMENT_METHOD' | 'ANNOUNCEMENT' | 'USER' | 'TRANSACTION' | 'SIGNAL';
+  targetId: string;
+  adminEmail: string;
+  adminId?: string;
+  details: string;
+  previousValue?: any;
+  newValue?: any;
+  metadata?: Record<string, any>;
+  timestamp: string;
 }
 
 export type SignalConnectionStatus = 

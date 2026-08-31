@@ -84,6 +84,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { updateGameStatus, normalizeGameStatus, NormalizedGameStatus } from '../../services/gameStatusService';
 import { updateGlobalWinProbability, DEFAULT_GLOBAL_WIN_PROBABILITY } from '../../services/gameProbabilityService';
+import { saveSiteSettings, recordAdminAuditLog } from '../../services/adminConfigService';
 import SignalManagementTab from './SignalManagementTab';
 import WithdrawalsTab from './WithdrawalsTab';
 import DepositsTab from './DepositsTab';
@@ -999,24 +1000,31 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
     }
   };
 
-  // SETTINGS SAVE
+  // SETTINGS SAVE (Persistent Single Source of Truth)
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     haptics.medium();
     try {
-      const docRef = doc(db, 'settings', 'site');
-      const dataToSave = {
-        ...settings,
-        globalWinProbability: Number(adminWinProb) || DEFAULT_GLOBAL_WIN_PROBABILITY,
-        updatedAt: new Date().toISOString()
-      };
-      await setDoc(docRef, dataToSave, { merge: true });
-      
-      // Also update authoritative server memory
       const adminEmail = user?.email || userData?.email || 'admin@tk333.vip';
-      await updateGlobalWinProbability(Number(adminWinProb) || DEFAULT_GLOBAL_WIN_PROBABILITY, adminEmail);
+      const dataToSave: Partial<SiteSettings> = {
+        ...settings,
+        globalWinProbability: Number(adminWinProb) || DEFAULT_GLOBAL_WIN_PROBABILITY
+      };
 
-      showToast(lang === 'bn' ? 'ওয়েবসাইট সেটিংস ও গ্লোবাল উইন প্রোবাবিলিটি সফলভাবে সংরক্ষিত!' : 'Website settings and Global Win Probability saved!');
+      const result = await saveSiteSettings(dataToSave, adminEmail);
+      
+      if (result.success && result.data) {
+        setSettings(result.data);
+        // Also update authoritative server memory
+        await updateGlobalWinProbability(Number(adminWinProb) || DEFAULT_GLOBAL_WIN_PROBABILITY, adminEmail);
+        showToast(
+          lang === 'bn' 
+            ? `✓ সেটিংস স্থায়ীভাবে ডাটাবেজে সংরক্ষিত হয়েছে (Version v${result.data.configVersion || 1})!` 
+            : `✓ Settings permanently saved to database (Version v${result.data.configVersion || 1})!`
+        );
+      } else {
+        alert(result.error || 'Failed to save settings');
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'settings/site');
     }
@@ -3033,98 +3041,398 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
             </div>
           )}
 
-          {/* TAB 10: WEBSITE SETTINGS & SOCIAL LINKS */}
+          {/* TAB 10: WEBSITE SETTINGS & BRAND CONFIGURATION */}
           {activeTab === 'settings' && (
-            <form onSubmit={handleSaveSettings} className="space-y-4 max-w-lg">
-              <div className="pb-3 border-b border-slate-100">
-                <h2 className="text-base sm:text-lg font-black font-chakra text-slate-900">
-                  {lang === 'bn' ? 'ওয়েবসাইট ও সোশ্যাল সেটিংস' : 'Website & Social Settings'}
-                </h2>
-                <p className="text-xs text-slate-500">
-                  {lang === 'bn' ? 'ব্র্যান্ডের নাম, সাপোর্ট লিঙ্ক ও যোগাযোগ তথ্য নিয়ন্ত্রণ করুন।' : 'Configure brand information, WhatsApp, Telegram, and Live Support.'}
-                </p>
+            <form onSubmit={handleSaveSettings} className="space-y-5 max-w-2xl">
+              <div className="pb-3 border-b border-slate-100 flex items-start justify-between">
+                <div>
+                  <h2 className="text-base sm:text-lg font-black font-chakra text-slate-900 flex items-center gap-2">
+                    <SettingsIcon size={18} className="text-blue-600" />
+                    <span>{lang === 'bn' ? 'স্থায়ী ওয়েবসাইট ও ব্র্যান্ড কনফিগারেশন' : 'Permanent Website & Brand Configuration'}</span>
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {lang === 'bn' 
+                      ? 'সব এডমিন কনফিগারেশন সরাসরি ফায়ারবেস ডাটাবেজে সংরক্ষিত হয় এবং রিস্টার্ট হলেও অপরিবর্তিত থাকে।' 
+                      : 'All admin changes are permanently stored in Firebase Firestore as the single source of truth.'}
+                  </p>
+                </div>
               </div>
 
-              <div className="space-y-3">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-700 uppercase">ব্র্যান্ডের নাম (Brand Name):</label>
-                  <input
-                    type="text"
-                    value={settings?.brandName || 'TK333'}
-                    onChange={(e) => setSettings(prev => ({ ...prev, brandName: e.target.value }))}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-bold"
-                  />
+              {/* Anti-Reset Persistence Status Card */}
+              <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
+                    <ShieldCheck size={18} />
+                  </div>
+                  <div>
+                    <div className="font-chakra font-black text-emerald-950 flex items-center gap-1.5">
+                      <span>{lang === 'bn' ? 'স্থায়ী ডাটাবেজ স্টোরেজ সক্রিয়' : 'Persistent Storage Active'}</span>
+                      <span className="px-1.5 py-0.5 bg-emerald-200 text-emerald-800 text-[9px] rounded-md font-mono font-bold">
+                        v{settings?.configVersion || 1}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-emerald-700 mt-0.5">
+                      {settings?.updatedAt 
+                        ? `${lang === 'bn' ? 'সর্বশেষ আপডেট:' : 'Last updated:'} ${new Date(settings.updatedAt).toLocaleString()}`
+                        : (lang === 'bn' ? 'ডাটাবেজে সুরক্ষিত' : 'Secure in database')}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-emerald-300 rounded-lg text-[10px] font-chakra font-black text-emerald-700 shadow-xs">
+                    <Lock size={11} />
+                    {lang === 'bn' ? 'অ্যান্টি-রিসেট সক্রিয়' : 'Anti-Reset Protected'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {/* SECTION 1: BRAND IDENTITY & LOGO */}
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                  <div className="text-xs font-black font-chakra text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                    <Sparkles size={14} className="text-blue-600" />
+                    <span>{lang === 'bn' ? '১. ব্র্যান্ড ও লোগো সেটিংস' : '1. Brand & Logo Settings'}</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase">ব্র্যান্ড নাম (Brand Name):</label>
+                      <input
+                        type="text"
+                        value={settings?.brandName ?? 'TK333'}
+                        onChange={(e) => setSettings(prev => ({ ...prev, brandName: e.target.value }))}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-bold"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase">ওয়েবসাইট টাইটেল (Website Name):</label>
+                      <input
+                        type="text"
+                        value={settings?.websiteName ?? 'TK333 VIP Casino'}
+                        onChange={(e) => setSettings(prev => ({ ...prev, websiteName: e.target.value }))}
+                        placeholder="TK333 VIP Casino"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Logo Image Upload / URL */}
+                  <div className="space-y-1.5 pt-1">
+                    <label className="text-[10px] font-bold text-slate-700 uppercase flex items-center justify-between">
+                      <span>ওয়েবসাইট লোগো (Website Logo):</span>
+                      {settings?.logoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setSettings(prev => ({ ...prev, logoUrl: '', logoStoragePath: '' }))}
+                          className="text-rose-600 hover:underline text-[9px] font-bold"
+                        >
+                          {lang === 'bn' ? 'লোগো মুছে ফেলুন' : 'Remove Custom Logo'}
+                        </button>
+                      )}
+                    </label>
+
+                    {settings?.logoUrl && (
+                      <div className="p-2 bg-slate-900 rounded-xl border border-slate-700 flex items-center gap-3">
+                        <img 
+                          src={settings.logoUrl} 
+                          alt="Custom Logo" 
+                          className="h-10 max-w-[140px] object-contain rounded-lg bg-black/40 p-1"
+                        />
+                        <div className="text-[10px] text-slate-300">
+                          <div className="font-bold text-emerald-400">✓ কাস্টম লোগো সক্রিয়</div>
+                          <div className="truncate max-w-xs text-slate-400 font-mono text-[9px]">{settings.logoUrl}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={settings?.logoUrl ?? ''}
+                        onChange={(e) => setSettings(prev => ({ ...prev, logoUrl: e.target.value }))}
+                        placeholder="https://.../logo.png"
+                        className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-mono"
+                      />
+                      <label className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5 shrink-0 transition-colors">
+                        <Upload size={13} />
+                        <span>{uploadingImage ? '...' : (lang === 'bn' ? 'আপলোড' : 'Upload')}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={uploadingImage}
+                          onChange={(e) => handleImageFileSelect(e, 'logos', (url, path) => {
+                            setSettings(prev => ({ ...prev, logoUrl: url, logoStoragePath: path }));
+                          })}
+                        />
+                      </label>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-700 uppercase">বিকাশ ডিপোজিট নম্বর (bKash Deposit Number):</label>
-                  <input
-                    type="text"
-                    value={settings?.depositBkashNumber || '01641404837'}
-                    onChange={(e) => setSettings(prev => ({ ...prev, depositBkashNumber: e.target.value }))}
-                    placeholder="01641404837"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono font-bold"
-                  />
+                {/* SECTION 2: HOMEPAGE HERO COVER & BANNERS */}
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                  <div className="text-xs font-black font-chakra text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                    <ImageIcon size={14} className="text-blue-600" />
+                    <span>{lang === 'bn' ? '২. হোমপেজ কভার ও ব্যানার সেটিংস' : '2. Homepage Cover & Banner Settings'}</span>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-700 uppercase flex items-center justify-between">
+                      <span>হোমপেজ হিরো কভার ছবি (Hero Cover Image):</span>
+                      {settings?.heroCover && (
+                        <button
+                          type="button"
+                          onClick={() => setSettings(prev => ({ ...prev, heroCover: '', heroCoverStoragePath: '' }))}
+                          className="text-rose-600 hover:underline text-[9px] font-bold"
+                        >
+                          {lang === 'bn' ? 'কভার মুছে ফেলুন' : 'Remove Cover'}
+                        </button>
+                      )}
+                    </label>
+
+                    {settings?.heroCover && (
+                      <div className="relative rounded-xl overflow-hidden border border-slate-300 aspect-[21/9] max-h-36 bg-slate-900">
+                        <img 
+                          src={settings.heroCover} 
+                          alt="Hero Cover" 
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/70 backdrop-blur-xs text-white text-[9px] rounded font-chakra font-bold">
+                          ✓ সক্রিয় হোমপেজ কভার
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={settings?.heroCover ?? ''}
+                        onChange={(e) => setSettings(prev => ({ ...prev, heroCover: e.target.value }))}
+                        placeholder="https://.../cover.jpg"
+                        className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-mono"
+                      />
+                      <label className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5 shrink-0 transition-colors">
+                        <Upload size={13} />
+                        <span>{uploadingImage ? '...' : (lang === 'bn' ? 'আপলোড' : 'Upload')}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={uploadingImage}
+                          onChange={(e) => handleImageFileSelect(e, 'banners', (url, path) => {
+                            setSettings(prev => ({ ...prev, heroCover: url, heroCoverStoragePath: path }));
+                          })}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase">হিরো টাইটেল (বাংলা):</label>
+                      <input
+                        type="text"
+                        value={settings?.heroTitleBn ?? ''}
+                        onChange={(e) => setSettings(prev => ({ ...prev, heroTitleBn: e.target.value }))}
+                        placeholder="বাংলাদেশের নং ১ লাইভ গেমিং প্ল্যাটফর্ম"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase">Hero Title (English):</label>
+                      <input
+                        type="text"
+                        value={settings?.heroTitle ?? ''}
+                        onChange={(e) => setSettings(prev => ({ ...prev, heroTitle: e.target.value }))}
+                        placeholder="Bangladesh's #1 Live Gaming Platform"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-700 uppercase">নগদ ডিপোজিট নম্বর (Nagad Deposit Number):</label>
-                  <input
-                    type="text"
-                    value={settings?.depositNagadNumber || '01641404837'}
-                    onChange={(e) => setSettings(prev => ({ ...prev, depositNagadNumber: e.target.value }))}
-                    placeholder="01641404837"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono font-bold"
-                  />
+                {/* SECTION 3: CURRENCY SETTINGS */}
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                  <div className="text-xs font-black font-chakra text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                    <DollarSign size={14} className="text-emerald-600" />
+                    <span>{lang === 'bn' ? '৩. মুদ্রা ও কারেন্সি সেটিংস' : '3. Currency Settings'}</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase">কারেন্সি সিম্বল (Currency Symbol):</label>
+                      <input
+                        type="text"
+                        value={settings?.currencySymbol ?? '৳'}
+                        onChange={(e) => setSettings(prev => ({ ...prev, currencySymbol: e.target.value }))}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-bold font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase">কারেন্সি কোড (Currency Code):</label>
+                      <input
+                        type="text"
+                        value={settings?.currencyCode ?? 'BDT'}
+                        onChange={(e) => setSettings(prev => ({ ...prev, currencyCode: e.target.value }))}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-bold font-mono uppercase"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-700 uppercase">সাপোর্ট হোয়াটসঅ্যাপ নম্বর (WhatsApp):</label>
-                  <input
-                    type="text"
-                    value={settings?.supportWhatsapp || '+8801641404837'}
-                    onChange={(e) => setSettings(prev => ({ ...prev, supportWhatsapp: e.target.value }))}
-                    placeholder="+8801641404837"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono"
-                  />
+                {/* SECTION 4: PAYMENT DEPOSIT NUMBERS */}
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                  <div className="text-xs font-black font-chakra text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                    <CreditCard size={14} className="text-blue-600" />
+                    <span>{lang === 'bn' ? '৪. ডিপোজিট একাউন্ট নম্বর' : '4. Payment Deposit Numbers'}</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase">বিকাশ নম্বর (bKash):</label>
+                      <input
+                        type="text"
+                        value={settings?.depositBkashNumber ?? '01641404837'}
+                        onChange={(e) => setSettings(prev => ({ ...prev, depositBkashNumber: e.target.value }))}
+                        placeholder="01641404837"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-mono font-bold"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase">নগদ নম্বর (Nagad):</label>
+                      <input
+                        type="text"
+                        value={settings?.depositNagadNumber ?? '01641404837'}
+                        onChange={(e) => setSettings(prev => ({ ...prev, depositNagadNumber: e.target.value }))}
+                        placeholder="01641404837"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-mono font-bold"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase">রকেট নম্বর (Rocket):</label>
+                      <input
+                        type="text"
+                        value={settings?.depositRocketNumber ?? '01641404837'}
+                        onChange={(e) => setSettings(prev => ({ ...prev, depositRocketNumber: e.target.value }))}
+                        placeholder="01641404837"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-mono font-bold"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase">উপায় নম্বর (Upay):</label>
+                      <input
+                        type="text"
+                        value={settings?.depositUpayNumber ?? '01641404837'}
+                        onChange={(e) => setSettings(prev => ({ ...prev, depositUpayNumber: e.target.value }))}
+                        placeholder="01641404837"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-mono font-bold"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-700 uppercase">টেলিগ্রাম চ্যানেল / গ্রুপ লিংক:</label>
-                  <input
-                    type="text"
-                    value={settings?.telegramChannel || 'https://t.me/TK333_official'}
-                    onChange={(e) => setSettings(prev => ({ ...prev, telegramChannel: e.target.value }))}
-                    placeholder="https://t.me/..."
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono"
-                  />
+                {/* SECTION 5: CONTACT & SOCIAL SUPPORT */}
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                  <div className="text-xs font-black font-chakra text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                    <MessageSquare size={14} className="text-blue-600" />
+                    <span>{lang === 'bn' ? '৫. সাপোর্ট ও সোশ্যাল চ্যানেল' : '5. Support & Social Channels'}</span>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase">হোয়াটসঅ্যাপ সাপোর্ট নম্বর (WhatsApp):</label>
+                      <input
+                        type="text"
+                        value={settings?.supportWhatsapp ?? '+8801641404837'}
+                        onChange={(e) => setSettings(prev => ({ ...prev, supportWhatsapp: e.target.value }))}
+                        placeholder="+8801641404837"
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase">টেলিগ্রাম চ্যানেল / গ্রুপ লিংক:</label>
+                      <input
+                        type="text"
+                        value={settings?.telegramChannel ?? 'https://t.me/TK333_official'}
+                        onChange={(e) => setSettings(prev => ({ ...prev, telegramChannel: e.target.value }))}
+                        placeholder="https://t.me/..."
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase">ফেসবুক পেজ লিংক:</label>
+                      <input
+                        type="text"
+                        value={settings?.facebookPage ?? 'https://facebook.com/TK333'}
+                        onChange={(e) => setSettings(prev => ({ ...prev, facebookPage: e.target.value }))}
+                        placeholder="https://facebook.com/..."
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase">লাইভ চ্যাট উইজেট লিংক (Live Chat URL):</label>
+                      <input
+                        type="text"
+                        value={settings?.liveChatUrl ?? 'https://tawk.to'}
+                        onChange={(e) => setSettings(prev => ({ ...prev, liveChatUrl: e.target.value }))}
+                        placeholder="https://tawk.to/..."
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-mono"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-700 uppercase">ফেসবুক পেজ লিংক:</label>
-                  <input
-                    type="text"
-                    value={settings?.facebookPage || 'https://facebook.com/TK333'}
-                    onChange={(e) => setSettings(prev => ({ ...prev, facebookPage: e.target.value }))}
-                    placeholder="https://facebook.com/..."
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-mono"
-                  />
+                {/* SECTION 6: FOOTER TEXT & DISCLAIMERS */}
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                  <div className="text-xs font-black font-chakra text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                    <Globe size={14} className="text-blue-600" />
+                    <span>{lang === 'bn' ? '৬. ফুটার ও লাইসেন্স ঘোষণা' : '6. Footer & License Disclaimers'}</span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase">ফুটার নোটিশ (বাংলা):</label>
+                      <textarea
+                        rows={2}
+                        value={settings?.footerTextBn ?? settings?.footerText ?? 'TK333 কুরাকাও সরকার কর্তৃক লাইসেন্সপ্রাপ্ত ও নিয়ন্ত্রিত। ১৮+ দায়িত্বশীলভাবে খেলুন।'}
+                        onChange={(e) => setSettings(prev => ({ ...prev, footerTextBn: e.target.value, footerText: e.target.value }))}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-700 uppercase">Footer Notice (English):</label>
+                      <textarea
+                        rows={2}
+                        value={settings?.footerTextEn ?? 'TK333 is licensed and regulated by the Government of Curacao. 18+ Play Responsibly.'}
+                        onChange={(e) => setSettings(prev => ({ ...prev, footerTextEn: e.target.value }))}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                {/* Global Win Probability (Fixed 5% Default) */}
-                <div className="p-3.5 bg-indigo-50/80 border border-indigo-200 rounded-2xl space-y-2">
+                {/* SECTION 7: GLOBAL WIN PROBABILITY */}
+                <div className="p-4 bg-indigo-50/80 border border-indigo-200 rounded-2xl space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="text-[11px] font-black text-indigo-950 uppercase flex items-center gap-1.5">
-                      <Percent size={14} className="text-indigo-600" />
-                      <span>{lang === 'bn' ? 'গ্লোবাল উইন প্রোবাবিলিটি (Fixed Win Rate %):' : 'Global Win Probability (%):'}</span>
+                    <label className="text-xs font-black text-indigo-950 uppercase flex items-center gap-1.5">
+                      <Percent size={15} className="text-indigo-600" />
+                      <span>{lang === 'bn' ? '৭. গ্লোবাল উইন প্রোবাবিলিটি (Fixed Win Rate %):' : '7. Global Win Probability (%):'}</span>
                     </label>
                     <span className="font-chakra font-black text-sm text-indigo-700 font-mono">
                       {adminWinProb}%
                     </span>
                   </div>
-                  <p className="text-[10px] text-slate-500">
+                  <p className="text-[10px] text-slate-600">
                     {lang === 'bn' 
-                      ? 'পুরো ওয়েবসাইটের সব গেমের জন্য একক উইন রেট (ডিফল্ট: ৫%)। ফলাফল সরাসরি সার্ভার থেকে নির্ধারিত হয়।' 
+                      ? 'পুরো ওয়েবসাইটের সব গেমের জন্য একক উইন রেট (ডিফল্ট: ৫%)। ফলাফল সরাসরি সার্ভার মেমরি ও ফায়ারবেস থেকে নিশ্চিত করা হয়।' 
                       : 'Authoritative centralized win probability for all demo games (Default: 5%).'}
                   </p>
                   <div className="flex items-center gap-2 pt-1">
@@ -3136,14 +3444,14 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                       onChange={(e) => setAdminWinProb(Number(e.target.value))}
                       className="w-24 px-3 py-2 bg-white border border-indigo-300 rounded-xl text-xs text-slate-900 font-black font-mono"
                     />
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       {[5, 10, 25, 50].map((v) => (
                         <button
                           key={v}
                           type="button"
                           onClick={() => setAdminWinProb(v)}
-                          className={`px-2.5 py-1.5 rounded-lg text-[10px] font-chakra font-black border ${
-                            adminWinProb === v ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-indigo-700 border-indigo-200'
+                          className={`px-3 py-1.5 rounded-xl text-xs font-chakra font-black border transition-all ${
+                            adminWinProb === v ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-100'
                           }`}
                         >
                           {v}%
@@ -3153,12 +3461,14 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                   </div>
                 </div>
 
+                {/* SAVE BUTTON */}
                 <div className="pt-2">
                   <button
                     type="submit"
-                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-chakra font-black text-xs rounded-2xl shadow-xs active:scale-95 transition-all"
+                    className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-chakra font-black text-xs sm:text-sm rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
                   >
-                    {lang === 'bn' ? 'সেটিংস সংরক্ষণ করুন' : 'Save Settings'}
+                    <Save size={16} />
+                    <span>{lang === 'bn' ? 'সব সেটিংস স্থায়ীভাবে সংরক্ষণ করুন' : 'Permanently Save All Settings'}</span>
                   </button>
                 </div>
               </div>
