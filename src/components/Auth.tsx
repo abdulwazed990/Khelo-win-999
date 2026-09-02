@@ -256,7 +256,24 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
         );
       } else {
         haptics.error();
-        setError(err.message || (lang === 'bn' ? 'Google সাইন-ইন সম্পন্ন করা সম্ভব হয়নি।' : 'Google Sign-In failed'));
+        const codeMsg = err.code ? ` [Code: ${err.code}]` : '';
+        if (err.code === 'auth/operation-not-allowed') {
+          setError(
+            lang === 'bn'
+              ? 'Firebase Console > Authentication > Sign-in method এ গিয়ে Google Provider টি "Enable" (চালু) করুন।'
+              : 'Google Sign-In is not enabled. Please enable Google provider in Firebase Console > Authentication > Sign-in method.'
+          );
+        } else if (err.code === 'auth/network-request-failed') {
+          setError(
+            lang === 'bn'
+              ? 'ইন্টারনেট বা নেটওয়ার্ক কানেকশন সমস্যা। অনুগ্রহ করে আবার চেষ্টা করুন।'
+              : 'Network error. Please check your connection and try again.'
+          );
+        } else {
+          setError(
+            (err.message || (lang === 'bn' ? 'Google সাইন-ইন সম্পন্ন করা সম্ভব হয়নি।' : 'Google Sign-In failed')) + codeMsg
+          );
+        }
       }
     } finally {
       setLoading(false);
