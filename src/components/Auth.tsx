@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, signOut, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, signOut, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType, isQuotaExceededError } from '../firebase';
 import { safeGetDoc } from '../services/safeFirestore';
@@ -184,7 +184,22 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
       
-      const result = await signInWithPopup(auth, provider);
+      let result;
+      try {
+        result = await signInWithPopup(auth, provider);
+      } catch (popupErr: any) {
+        // If popup is blocked by iframe or browser restrictions, attempt redirect or detailed instruction
+        if (popupErr?.code === 'auth/popup-blocked' || popupErr?.code === 'auth/cancelled-popup-request') {
+          console.warn('Popup blocked/cancelled, attempting fallback flow');
+          try {
+            await signInWithRedirect(auth, provider);
+            return;
+          } catch (redErr) {
+            throw popupErr;
+          }
+        }
+        throw popupErr;
+      }
       const user = result.user;
 
       if (!user) {
