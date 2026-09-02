@@ -248,10 +248,11 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
         haptics.error();
       } else if (err.code === 'auth/unauthorized-domain') {
         haptics.error();
+        const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
         setError(
           lang === 'bn'
-            ? 'এই ডোমেনটি Firebase Auth এ অনুমোদিত নয়। অনুগ্রহ করে ইউজারনেম ও পাসওয়ার্ড দিয়ে লগইন/রেজিস্ট্রেশন করুন।'
-            : 'Domain unauthorized for Firebase Google Auth. Please login or register using your Username & Password.'
+            ? `Firebase Console এ এই ডোমেনটি (${currentHost || 'বর্তমান ডোমেন'}) Authorized Domains এ যুক্ত করুন। অথবা ইউজারনেম ও পাসওয়ার্ড দিয়ে লগইন করুন।`
+            : `Domain "${currentHost}" is not in Firebase Authorized Domains. Please add it in Firebase Console or use Username & Password login.`
         );
       } else {
         haptics.error();

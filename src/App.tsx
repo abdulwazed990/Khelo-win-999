@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { doc } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
+import { safeGetDoc, safeOnSnapshot, safeSetDoc } from './services/safeFirestore';
 import { UserData, SiteSettings, GameItem } from './types';
 import { motion, AnimatePresence } from 'motion/react';
 import { ShieldAlert, ArrowLeft, LogOut } from 'lucide-react';
@@ -188,44 +189,49 @@ export default function App() {
         }
       } catch (e) {}
 
-      const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data() as UserData;
-          setUserData(data);
-          try {
-            localStorage.setItem(`tk333_cached_user_${user.uid}`, JSON.stringify(data));
-          } catch (lsE) {}
-        }
-        setLoading(false);
-      }, (error) => {
-        console.warn(`User snapshot fallback active for ${user.uid}:`, error?.message);
-        // Quota fallback: Ensure user data is populated from local cache or fallback profile
-        setUserData(prev => {
-          if (prev) return prev;
-          try {
-            const cached = localStorage.getItem(`tk333_cached_user_${user.uid}`);
-            if (cached) return JSON.parse(cached);
-          } catch (e) {}
-          return {
-            uid: user.uid,
-            name: user.displayName || 'TK333 Member',
-            username: user.email?.split('@')[0] || 'user',
-            email: user.email,
-            phone: user.phoneNumber || '',
-            balance: 10,
-            welcomeBonusClaimed: true,
-            freeSpins: 0,
-            role: user.email === 'mohammadabdulwazed1@gmail.com' ? 'admin' : 'user',
-            createdAt: new Date().toISOString()
-          };
-        });
-        setLoading(false);
-      });
+      const unsubscribe = safeOnSnapshot(
+        doc(db, 'users', user.uid),
+        (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data() as UserData;
+            setUserData(data);
+            try {
+              localStorage.setItem(`tk333_cached_user_${user.uid}`, JSON.stringify(data));
+            } catch (lsE) {}
+          }
+          setLoading(false);
+        },
+        (error) => {
+          console.warn(`User snapshot fallback active for ${user.uid}:`, error?.message);
+          // Quota fallback: Ensure user data is populated from local cache or fallback profile
+          setUserData(prev => {
+            if (prev) return prev;
+            try {
+              const cached = localStorage.getItem(`tk333_cached_user_${user.uid}`);
+              if (cached) return JSON.parse(cached);
+            } catch (e) {}
+            return {
+              uid: user.uid,
+              name: user.displayName || 'TK333 Member',
+              username: user.email?.split('@')[0] || 'user',
+              email: user.email,
+              phone: user.phoneNumber || '',
+              balance: 10,
+              welcomeBonusClaimed: true,
+              freeSpins: 0,
+              role: user.email === 'mohammadabdulwazed1@gmail.com' ? 'admin' : 'user',
+              createdAt: new Date().toISOString()
+            };
+          });
+          setLoading(false);
+        },
+        `users/${user.uid}`
+      );
       return unsubscribe;
     }
   }, [user]);
 
-  // 3. Site Settings Listener with local cache fallback
+  // 3. Site Settings Listener with local-first persistent cache fallback
   useEffect(() => {
     // Initial local load
     try {
@@ -235,24 +241,29 @@ export default function App() {
       }
     } catch (e) {}
 
-    const unsubscribe = onSnapshot(doc(db, 'settings', 'site'), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data() as SiteSettings;
-        setSettings(data);
-        try {
-          localStorage.setItem('tk333_cached_site_settings', JSON.stringify(data));
-        } catch (lsE) {}
-      }
-    }, (error) => {
-      console.warn('Site settings snapshot notice:', error?.message);
-    });
+    const unsubscribe = safeOnSnapshot(
+      doc(db, 'settings', 'site'),
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data() as SiteSettings;
+          setSettings(data);
+          try {
+            localStorage.setItem('tk333_cached_site_settings', JSON.stringify(data));
+          } catch (lsE) {}
+        }
+      },
+      (error) => {
+        console.warn('Site settings snapshot notice:', error?.message);
+      },
+      'settings/site'
+    );
     return unsubscribe;
   }, []);
 
   const handleRefreshBalance = useCallback(async () => {
     if (!user) return;
     try {
-      const docSnap = await getDoc(doc(db, 'users', user.uid));
+      const docSnap = await safeGetDoc<UserData>(doc(db, 'users', user.uid));
       if (docSnap.exists()) {
         const data = docSnap.data() as UserData;
         setUserData(data);

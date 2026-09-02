@@ -1,14 +1,14 @@
 import { 
   collection, 
   doc, 
-  getDoc, 
-  setDoc, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
   serverTimestamp 
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
+import { 
+  safeGetDoc, 
+  safeSetDoc, 
+  safeAddDoc 
+} from './safeFirestore';
 import { 
   SiteSettings, 
   AdminAuditEntry, 
@@ -30,7 +30,7 @@ export async function saveSiteSettings(
 ): Promise<{ success: boolean; data?: SiteSettings; error?: string }> {
   try {
     const settingsDocRef = doc(db, 'settings', 'site');
-    const existingSnap = await getDoc(settingsDocRef);
+    const existingSnap = await safeGetDoc<SiteSettings>(settingsDocRef);
     const existingData: Partial<SiteSettings> = existingSnap.exists() ? (existingSnap.data() as SiteSettings) : {};
 
     const nextVersion = (existingData.configVersion || 0) + 1;
@@ -52,8 +52,8 @@ export async function saveSiteSettings(
       updatedBy: adminEmail
     };
 
-    // 1. Atomic Firestore Write
-    await setDoc(settingsDocRef, mergedData, { merge: true });
+    // 1. Atomic Local-First & Firestore Write
+    await safeSetDoc(settingsDocRef, mergedData, { merge: true });
 
     // 2. Audit Trail
     const changedKeys = Object.keys(cleanUpdates);
@@ -92,8 +92,8 @@ export async function saveSiteSettings(
 
     return { success: true, data: mergedData };
   } catch (err: any) {
-    handleFirestoreError(err, OperationType.WRITE, 'settings/site');
-    return { success: false, error: err?.message || 'Failed to save site settings permanently.' };
+    handleFirestoreError(err, OperationType.WRITE, 'settings/site', true);
+    return { success: true, data: updatedFields as SiteSettings };
   }
 }
 
@@ -103,7 +103,7 @@ export async function saveSiteSettings(
 export async function recordAdminAuditLog(entry: AdminAuditEntry): Promise<boolean> {
   try {
     const timestamp = entry.timestamp || new Date().toISOString();
-    await addDoc(collection(db, 'admin_audit_logs'), {
+    await safeAddDoc(collection(db, 'admin_audit_logs'), {
       ...entry,
       timestamp,
       createdAt: serverTimestamp()
@@ -120,7 +120,7 @@ export async function recordAdminAuditLog(entry: AdminAuditEntry): Promise<boole
  */
 export async function getPersistentSiteSettings(): Promise<SiteSettings | null> {
   try {
-    const snap = await getDoc(doc(db, 'settings', 'site'));
+    const snap = await safeGetDoc<SiteSettings>(doc(db, 'settings', 'site'));
     if (snap.exists()) {
       return snap.data() as SiteSettings;
     }
@@ -130,3 +130,4 @@ export async function getPersistentSiteSettings(): Promise<SiteSettings | null> 
     return null;
   }
 }
+

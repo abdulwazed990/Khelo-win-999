@@ -33,7 +33,8 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, onSnapshot, query, orderBy, doc, updateDoc, increment, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, doc, updateDoc, increment, addDoc, serverTimestamp } from 'firebase/firestore';
+import { safeOnSnapshot } from '../services/safeFirestore';
 import { INITIAL_BANNERS, INITIAL_GAMES, INITIAL_CATEGORIES, INITIAL_PROMOTIONS, INITIAL_ANNOUNCEMENT, seedInitialFirestoreData } from '../services/seedData';
 import { haptics } from '../utils/haptics';
 import { normalizeGameStatus, isGameStatusAvailable, NormalizedGameStatus } from '../services/gameStatusService';
@@ -136,10 +137,10 @@ export default function Home({
     seedInitialFirestoreData();
 
     // Banners Listener
-    const unsubBanners = onSnapshot(collection(db, 'banners'), (snapshot) => {
-      if (!snapshot.empty) {
+    const unsubBanners = safeOnSnapshot(collection(db, 'banners'), (snapshot) => {
+      if (snapshot && !snapshot.empty) {
         const list: BannerItem[] = [];
-        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as BannerItem));
+        snapshot.forEach((d: any) => list.push({ id: d.id, ...d.data() } as BannerItem));
         list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
         const active = list.filter(b => b.active !== false && b.isActive !== false);
         const finalList = active.length > 0 ? active : list;
@@ -152,10 +153,10 @@ export default function Home({
     });
 
     // Categories Listener
-    const unsubCats = onSnapshot(collection(db, 'categories'), (snapshot) => {
-      if (!snapshot.empty) {
+    const unsubCats = safeOnSnapshot(collection(db, 'categories'), (snapshot) => {
+      if (snapshot && !snapshot.empty) {
         const list: CategoryItem[] = [];
-        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as CategoryItem));
+        snapshot.forEach((d: any) => list.push({ id: d.id, ...d.data() } as CategoryItem));
         list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
         const active = list.filter(c => c.active !== false && c.isActive !== false);
         const finalList = active.length > 0 ? active : list;
@@ -167,10 +168,10 @@ export default function Home({
     });
 
     // Games Listener
-    const unsubGames = onSnapshot(collection(db, 'games'), (snapshot) => {
-      if (!snapshot.empty) {
+    const unsubGames = safeOnSnapshot(collection(db, 'games'), (snapshot) => {
+      if (snapshot && !snapshot.empty) {
         const list: GameItem[] = [];
-        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as GameItem));
+        snapshot.forEach((d: any) => list.push({ id: d.id, ...d.data() } as GameItem));
         list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
         const active = list.filter(g => g.status !== 'inactive' && g.isActive !== false);
         const finalList = active.length > 0 ? active : list;
@@ -182,10 +183,10 @@ export default function Home({
     });
 
     // Home Ads Listener
-    const unsubAds = onSnapshot(collection(db, 'home_ads'), (snapshot) => {
-      if (!snapshot.empty) {
+    const unsubAds = safeOnSnapshot(collection(db, 'home_ads'), (snapshot) => {
+      if (snapshot && !snapshot.empty) {
         const list: HomeAdItem[] = [];
-        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as HomeAdItem));
+        snapshot.forEach((d: any) => list.push({ id: d.id, ...d.data() } as HomeAdItem));
         list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
         const finalList = list.filter(a => a.active !== false && a.isActive !== false);
         setHomeAds(finalList);
@@ -194,10 +195,10 @@ export default function Home({
     }, () => {});
 
     // Promotions Listener
-    const unsubPromo = onSnapshot(collection(db, 'promotions'), (snapshot) => {
-      if (!snapshot.empty) {
+    const unsubPromo = safeOnSnapshot(collection(db, 'promotions'), (snapshot) => {
+      if (snapshot && !snapshot.empty) {
         const list: PromotionItem[] = [];
-        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as PromotionItem));
+        snapshot.forEach((d: any) => list.push({ id: d.id, ...d.data() } as PromotionItem));
         list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
         const finalList = list.filter(p => p.active !== false && p.isActive !== false);
         setPromotions(finalList);
@@ -207,8 +208,8 @@ export default function Home({
 
     // Announcement Listener
     const announceQ = query(collection(db, 'announcements'));
-    const unsubAnnounce = onSnapshot(announceQ, (snapshot) => {
-      if (!snapshot.empty) {
+    const unsubAnnounce = safeOnSnapshot(announceQ, (snapshot) => {
+      if (snapshot && !snapshot.empty) {
         const docData = snapshot.docs[0].data() as AnnouncementItem;
         setAnnouncementObj(docData);
         try { localStorage.setItem('tk333_cached_announcement', JSON.stringify(docData)); } catch (e) {}

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { User, signOut } from 'firebase/auth';
 import { 
   collection, 
-  onSnapshot, 
   doc, 
   setDoc, 
   updateDoc, 
@@ -13,6 +12,7 @@ import {
   increment,
   getDocs
 } from 'firebase/firestore';
+import { safeOnSnapshot } from '../../services/safeFirestore';
 import { auth, db, handleFirestoreError, OperationType } from '../../firebase';
 import { 
   BannerItem, 
@@ -402,9 +402,9 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
   // 1. Listen to Banners
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'banners'), (snapshot) => {
+    const unsub = safeOnSnapshot(collection(db, 'banners'), (snapshot) => {
       const list: BannerItem[] = [];
-      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as BannerItem));
+      if (snapshot) snapshot.forEach((d: any) => list.push({ id: d.id, ...d.data() } as BannerItem));
       list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
       setBanners(list);
     }, (err) => console.warn('Banners load error', err));
@@ -413,9 +413,9 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
   // 2. Listen to Home Ads
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'home_ads'), (snapshot) => {
+    const unsub = safeOnSnapshot(collection(db, 'home_ads'), (snapshot) => {
       const list: HomeAdItem[] = [];
-      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as HomeAdItem));
+      if (snapshot) snapshot.forEach((d: any) => list.push({ id: d.id, ...d.data() } as HomeAdItem));
       list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
       setHomeAds(list);
     }, (err) => console.warn('Home ads error', err));
@@ -424,9 +424,9 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
   // 3. Listen to Games
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'games'), (snapshot) => {
+    const unsub = safeOnSnapshot(collection(db, 'games'), (snapshot) => {
       const list: GameItem[] = [];
-      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as GameItem));
+      if (snapshot) snapshot.forEach((d: any) => list.push({ id: d.id, ...d.data() } as GameItem));
       list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
       setGames(list);
     }, (err) => console.warn('Games load error', err));
@@ -435,9 +435,9 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
   // 4. Listen to Categories
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'categories'), (snapshot) => {
+    const unsub = safeOnSnapshot(collection(db, 'categories'), (snapshot) => {
       const list: CategoryItem[] = [];
-      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as CategoryItem));
+      if (snapshot) snapshot.forEach((d: any) => list.push({ id: d.id, ...d.data() } as CategoryItem));
       list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
       setCategories(list);
     }, (err) => console.warn('Categories load error', err));
@@ -446,9 +446,9 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
   // 5. Listen to Promotions
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'promotions'), (snapshot) => {
+    const unsub = safeOnSnapshot(collection(db, 'promotions'), (snapshot) => {
       const list: PromotionItem[] = [];
-      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as PromotionItem));
+      if (snapshot) snapshot.forEach((d: any) => list.push({ id: d.id, ...d.data() } as PromotionItem));
       list.sort((a, b) => (Number(a.order ?? 999) - Number(b.order ?? 999)));
       setPromotions(list);
     }, (err) => console.warn('Promotions load error', err));
@@ -457,9 +457,9 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
   // 6. Listen to Payment Methods
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'payment_methods'), (snapshot) => {
+    const unsub = safeOnSnapshot(collection(db, 'payment_methods'), (snapshot) => {
       const list: PaymentMethodConfig[] = [];
-      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as PaymentMethodConfig));
+      if (snapshot) snapshot.forEach((d: any) => list.push({ id: d.id, ...d.data() } as PaymentMethodConfig));
       list.sort((a, b) => (Number(a.sortOrder ?? 999) - Number(b.sortOrder ?? 999)));
       setPaymentMethods(list);
     }, (err) => console.warn('Payment methods error', err));
@@ -468,8 +468,8 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
   // 7. Listen to Announcements
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'announcements'), (snapshot) => {
-      if (!snapshot.empty) {
+    const unsub = safeOnSnapshot(collection(db, 'announcements'), (snapshot) => {
+      if (snapshot && !snapshot.empty) {
         const docSnap = snapshot.docs[0];
         const data = { id: docSnap.id, ...docSnap.data() } as AnnouncementItem;
         setAnnouncement(data);
@@ -482,8 +482,8 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
   // 8. Listen to Settings
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'settings', 'site'), (docSnap) => {
-      if (docSnap.exists()) {
+    const unsub = safeOnSnapshot(doc(db, 'settings', 'site'), (docSnap) => {
+      if (docSnap && docSnap.exists()) {
         const data = docSnap.data() as SiteSettings;
         setSettings(data);
         if (typeof data.globalWinProbability === 'number') {
@@ -496,9 +496,9 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
   // 9. Listen to Transactions
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'transactions'), (snapshot) => {
+    const unsub = safeOnSnapshot(collection(db, 'transactions'), (snapshot) => {
       const list: Transaction[] = [];
-      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as Transaction));
+      if (snapshot) snapshot.forEach((d: any) => list.push({ id: d.id, ...d.data() } as Transaction));
       list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       setTransactions(list);
       setLoading(false);
@@ -511,9 +511,9 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
   // 10. Listen to Users
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'users'), (snapshot) => {
+    const unsub = safeOnSnapshot(collection(db, 'users'), (snapshot) => {
       const list: UserData[] = [];
-      snapshot.forEach(d => list.push({ uid: d.id, ...d.data() } as UserData));
+      if (snapshot) snapshot.forEach((d: any) => list.push({ uid: d.id, ...d.data() } as UserData));
       setUsersList(list);
     }, () => {});
     return () => unsub();
