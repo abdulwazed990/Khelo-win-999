@@ -1321,7 +1321,7 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
   const confidenceScore = Math.min(94, Math.max(82, Math.round(88 + (predictedMultiplier % 1) * 7)));
 
   return (
-    <div className="min-h-screen bg-[#070b14] text-white font-sans flex flex-col select-none max-w-6xl mx-auto border-x border-slate-800/60 shadow-2xl">
+    <div className="min-h-[100dvh] bg-[#070b14] text-white font-sans flex flex-col select-none max-w-6xl mx-auto border-x border-slate-800/60 shadow-2xl overflow-x-hidden">
       {/* 1. Aerospace Cockpit Header */}
       <header className="px-3 sm:px-6 py-2.5 bg-[#0b1120] border-b border-slate-800/80 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">

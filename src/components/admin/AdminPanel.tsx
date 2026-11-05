@@ -355,10 +355,31 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
   // Global Win Probability (Fixed 5% Server-Enforced)
   const [adminWinProb, setAdminWinProb] = useState<number>(DEFAULT_GLOBAL_WIN_PROBABILITY);
   const [savingProb, setSavingProb] = useState<boolean>(false);
+  const [copiedPrivateAdminUrl, setCopiedPrivateAdminUrl] = useState<boolean>(false);
+  const [copiedPrivateAviatorUrl, setCopiedPrivateAviatorUrl] = useState<boolean>(false);
+
+  const privateAdminUrl = typeof window !== 'undefined' ? `${window.location.origin}/#admin` : 'https://www.tk-333bd.com/#admin';
+  const privateAviatorUrl = typeof window !== 'undefined' ? `${window.location.origin}/#aviator` : 'https://www.tk-333bd.com/#aviator';
 
   const showToast = (msg: string) => {
     setSaveSuccessMessage(msg);
     setTimeout(() => setSaveSuccessMessage(null), 3500);
+  };
+
+  const handleCopyPrivateAdminUrl = () => {
+    haptics.success();
+    navigator.clipboard.writeText(privateAdminUrl);
+    setCopiedPrivateAdminUrl(true);
+    showToast(lang === 'bn' ? '✓ প্রাইভেট অ্যাডমিন লিংক কপি হয়েছে!' : '✓ Private Admin URL copied to clipboard!');
+    setTimeout(() => setCopiedPrivateAdminUrl(false), 2500);
+  };
+
+  const handleCopyPrivateAviatorUrl = () => {
+    haptics.success();
+    navigator.clipboard.writeText(privateAviatorUrl);
+    setCopiedPrivateAviatorUrl(true);
+    showToast(lang === 'bn' ? '✓ প্রাইভেট এভিয়েটর গেম লিংক কপি হয়েছে!' : '✓ Private Aviator URL copied to clipboard!');
+    setTimeout(() => setCopiedPrivateAviatorUrl(false), 2500);
   };
 
   const getGameDirectLink = (game: GameItem) => {
@@ -1318,6 +1339,70 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                   <p className="text-xs text-slate-500">
                     {lang === 'bn' ? 'ক্যাসিনোর সার্বিক ডাটা ও সক্রিয় উপাদান' : 'Real-time aggregated counts from Firestore'}
                   </p>
+                </div>
+              </div>
+
+              {/* Dedicated Private Admin & Game Access Card */}
+              <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-4 sm:p-5 border border-indigo-500/40 shadow-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center">
+                      <ShieldCheck size={18} />
+                    </div>
+                    <div>
+                      <h3 className="font-chakra font-black text-sm text-white">
+                        {lang === 'bn' ? '🔒 প্রাইভেট অ্যাডমিন ও এক্সক্লুসিভ গেম লিঙ্ক' : '🔒 Private Admin & Exclusive Game Links'}
+                      </h3>
+                      <p className="text-[11px] text-indigo-200">
+                        {lang === 'bn' ? 'সাধারণ ওয়েবসাইট থেকে এই লিঙ্কগুলো সম্পূর্ণ গোপন ও সুরক্ষিত।' : 'Hidden from the public site for security & exclusive sharing.'}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold uppercase">
+                    ACTIVE
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  {/* Private Admin Panel URL */}
+                  <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-1.5">
+                    <span className="text-[10px] font-chakra font-bold text-slate-400 uppercase tracking-wider block">
+                      {lang === 'bn' ? 'প্রাইভেট অ্যাডমিন প্যানেল URL (Private Admin URL):' : 'Private Admin Panel URL:'}
+                    </span>
+                    <div className="flex items-center justify-between gap-2 bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-700/80">
+                      <span className="font-mono text-xs text-indigo-300 truncate">{privateAdminUrl}</span>
+                      <button
+                        onClick={handleCopyPrivateAdminUrl}
+                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-[10px] font-black uppercase flex items-center gap-1 shrink-0 transition-colors"
+                      >
+                        {copiedPrivateAdminUrl ? <Check size={12} /> : <Copy size={12} />}
+                        <span>{copiedPrivateAdminUrl ? (lang === 'bn' ? 'কপি!' : 'Copied!') : (lang === 'bn' ? 'কপি লিঙ্ক' : 'Copy URL')}</span>
+                      </button>
+                    </div>
+                    <span className="text-[10px] text-slate-500 block">
+                      {lang === 'bn' ? '✓ পাবলিক সাইট থেকে লুকানো। শুধুমাত্র মাস্টার পাসওয়ার্ড দিয়ে এক্সেসযোগ্য।' : '✓ Completely hidden from public site. Requires master login.'}
+                    </span>
+                  </div>
+
+                  {/* Private Aviator Jet Game URL */}
+                  <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-1.5">
+                    <span className="text-[10px] font-chakra font-bold text-slate-400 uppercase tracking-wider block">
+                      {lang === 'bn' ? 'প্রাইভেট এভিয়েটর জেট গেম URL (Private Game URL):' : 'Private Aviator Game URL:'}
+                    </span>
+                    <div className="flex items-center justify-between gap-2 bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-700/80">
+                      <span className="font-mono text-xs text-rose-300 truncate">{privateAviatorUrl}</span>
+                      <button
+                        onClick={handleCopyPrivateAviatorUrl}
+                        className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-md text-[10px] font-black uppercase flex items-center gap-1 shrink-0 transition-colors"
+                      >
+                        {copiedPrivateAviatorUrl ? <Check size={12} /> : <Copy size={12} />}
+                        <span>{copiedPrivateAviatorUrl ? (lang === 'bn' ? 'কপি!' : 'Copied!') : (lang === 'bn' ? 'কপি লিঙ্ক' : 'Copy URL')}</span>
+                      </button>
+                    </div>
+                    <span className="text-[10px] text-slate-500 block">
+                      {lang === 'bn' ? '✓ হোমপেজ ও সার্চ থেকে লুকানো। নির্দিষ্ট খেলোয়াড়দের সাথে শেয়ার করুন।' : '✓ Hidden from public homepage & search. Share with chosen players.'}
+                    </span>
+                  </div>
                 </div>
               </div>
 

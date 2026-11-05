@@ -542,7 +542,7 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
   }, [isAuto, isSpinning, balance, bet, freeSpins, handleSpin]);
 
   return (
-    <div className="min-h-screen bg-[#070b14] text-white font-sans flex flex-col max-w-4xl mx-auto border-x border-slate-800 select-none shadow-2xl">
+    <div className="min-h-[100dvh] bg-[#070b14] text-white font-sans flex flex-col max-w-4xl mx-auto border-x border-slate-800 select-none shadow-2xl overflow-x-hidden">
       {/* 1. Header Bar */}
       <header className="px-3 sm:px-6 py-2.5 bg-[#0b1120] border-b border-slate-800 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
@@ -611,9 +611,9 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
       </div>
 
       {/* 3. Slot Machine Reels Arena */}
-      <div className="flex-1 p-3 sm:p-6 flex flex-col items-center justify-center space-y-4">
+      <div className="flex-1 p-2 sm:p-6 flex flex-col items-center justify-center space-y-3 sm:space-y-4">
         {/* Championship Boxing Ring Frame */}
-        <div className="w-full max-w-xl bg-gradient-to-b from-[#1e1124] via-[#0f0b18] to-[#08050e] p-2.5 sm:p-4 rounded-3xl border-4 border-amber-500/60 shadow-[0_0_50px_rgba(245,158,11,0.2)] relative">
+        <div className="w-full max-w-xl bg-gradient-to-b from-[#1e1124] via-[#0f0b18] to-[#08050e] p-2 sm:p-4 rounded-3xl border-2 sm:border-4 border-amber-500/60 shadow-[0_0_50px_rgba(245,158,11,0.2)] relative">
           {/* Top Championship Belt Plaque & Free Spins Badge */}
           <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 flex items-center gap-2 z-30">
             <div className="bg-gradient-to-r from-amber-600 via-yellow-400 to-amber-600 px-4 py-0.5 rounded-full border border-amber-200 text-black font-chakra font-black text-[10px] tracking-widest uppercase shadow-md flex items-center gap-1">

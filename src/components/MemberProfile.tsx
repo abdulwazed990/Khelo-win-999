@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { User, signOut } from 'firebase/auth';
-import { auth } from '../firebase';
-import { UserData } from '../types';
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { auth, db } from '../firebase';
+import { UserData, Transaction } from '../types';
 import { useLanguage } from '../context/LanguageContext';
 import { haptics } from '../utils/haptics';
+import { formatBDT } from '../config/currency';
+import { format } from 'date-fns';
 import { 
   Wallet, 
   ArrowDownLeft, 
   ArrowUpRight, 
   History, 
-  Sliders, 
   LogOut, 
   ShieldCheck, 
   ChevronRight, 
@@ -21,10 +23,14 @@ import {
   Globe,
   Vibrate,
   Smartphone,
-  Phone
+  Phone,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  Filter,
+  CreditCard,
+  Receipt
 } from 'lucide-react';
-import Transactions from './Transactions';
-import HistoryPage from './History';
 
 interface MemberProfileProps {
   user: User | null;
@@ -34,11 +40,14 @@ interface MemberProfileProps {
 
 export default function MemberProfile({ user, userData, onNavigate }: MemberProfileProps) {
   const { lang, setLanguage, toggleLanguage, t } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'overview' | 'cashier' | 'bets'>('overview');
   const [copiedUid, setCopiedUid] = useState(false);
+  const [copiedTxId, setCopiedTxId] = useState<string | null>(null);
   const [hapticsOn, setHapticsOn] = useState<boolean>(() => haptics.getEnabled());
-
-  const isAdmin = userData?.role === 'admin' || user?.email === 'mohammadabdulwazed1@gmail.com';
+  
+  // Real-time Deposit & Withdrawal History
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loadingTx, setLoadingTx] = useState(true);
+  const [txFilter, setTxFilter] = useState<'all' | 'deposit' | 'withdraw'>('all');
 
   const copyUid = () => {
     if (!user) return;
@@ -48,15 +57,119 @@ export default function MemberProfile({ user, userData, onNavigate }: MemberProf
     setTimeout(() => setCopiedUid(false), 2000);
   };
 
+  const copyTxId = (id: string) => {
+    haptics.success();
+    navigator.clipboard.writeText(id);
+    setCopiedTxId(id);
+    setTimeout(() => setCopiedTxId(null), 2000);
+  };
+
   const handleToggleHaptics = () => {
     const newState = !hapticsOn;
     setHapticsOn(newState);
     haptics.setEnabled(newState);
   };
 
+  // Real-time Firestore transaction listener
+  useEffect(() => {
+    const currentUid = userData?.uid || user?.uid;
+    if (!currentUid) {
+      setLoadingTx(false);
+      return;
+    }
+
+    try {
+      const q = query(
+        collection(db, 'transactions'),
+        where('uid', '==', currentUid),
+        orderBy('createdAt', 'desc')
+      );
+
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          const list: Transaction[] = [];
+          snapshot.forEach((d) => {
+            list.push({ id: d.id, ...d.data() } as Transaction);
+          });
+          setTransactions(list);
+          setLoadingTx(false);
+        },
+        () => {
+          setLoadingTx(false);
+        }
+      );
+
+      return () => unsubscribe();
+    } catch {
+      setLoadingTx(false);
+    }
+  }, [userData?.uid, user?.uid]);
+
+  // Filter deposit and withdrawal records
+  const filteredTransactions = transactions.filter((tx) => {
+    if (txFilter === 'all') {
+      return tx.type === 'deposit' || tx.type === 'withdraw';
+    }
+    return tx.type === txFilter;
+  });
+
+  const getStatusBadge = (status: string) => {
+    const normalized = (status || 'pending').toLowerCase();
+    if (normalized === 'approved' || normalized === 'completed' || normalized === 'settled') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <CheckCircle2 size={11} className="text-emerald-600" />
+          <span>{lang === 'bn' ? 'অনুমোদিত' : 'Approved'}</span>
+        </span>
+      );
+    }
+    if (normalized === 'processing') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-blue-50 text-blue-700 border border-blue-200">
+          <Clock size={11} className="text-blue-600 animate-spin" />
+          <span>{lang === 'bn' ? 'প্রক্রিয়াধীন' : 'Processing'}</span>
+        </span>
+      );
+    }
+    if (normalized === 'rejected' || normalized === 'failed' || normalized === 'cancelled') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-rose-50 text-rose-700 border border-rose-200">
+          <XCircle size={11} className="text-rose-600" />
+          <span>{lang === 'bn' ? 'বাতিল' : 'Rejected'}</span>
+        </span>
+      );
+    }
+    // Default Pending
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-50 text-amber-700 border border-amber-200">
+        <Clock size={11} className="text-amber-600" />
+        <span>{lang === 'bn' ? 'অপেক্ষারত' : 'Pending'}</span>
+      </span>
+    );
+  };
+
+  const formatTxDate = (createdAt: any) => {
+    if (!createdAt) return 'Just now';
+    try {
+      if (typeof createdAt === 'string') {
+        return format(new Date(createdAt), 'dd MMM yyyy, hh:mm a');
+      }
+      if (createdAt.toDate && typeof createdAt.toDate === 'function') {
+        return format(createdAt.toDate(), 'dd MMM yyyy, hh:mm a');
+      }
+      if (createdAt.seconds) {
+        return format(new Date(createdAt.seconds * 1000), 'dd MMM yyyy, hh:mm a');
+      }
+      return 'Just now';
+    } catch {
+      return 'Recent';
+    }
+  };
+
   return (
     <div className="space-y-4 pb-20 max-w-md mx-auto">
-      {/* Profile Header Card (Light Theme) */}
+      {/* Profile Header Card */}
       <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm relative overflow-hidden">
         <div className="flex items-center gap-3.5 mb-4">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-700 p-0.5 shadow-sm">
@@ -77,7 +190,7 @@ export default function MemberProfile({ user, userData, onNavigate }: MemberProf
 
             <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500">
               <span className="font-mono text-[11px]">UID: {user?.uid.slice(0, 8)}...</span>
-              <button onClick={copyUid} className="text-blue-600 hover:text-blue-800">
+              <button onClick={copyUid} className="text-blue-600 hover:text-blue-800" title="Copy UID">
                 {copiedUid ? <Check size={12} /> : <Copy size={12} />}
               </button>
             </div>
@@ -136,34 +249,202 @@ export default function MemberProfile({ user, userData, onNavigate }: MemberProf
         </div>
       </div>
 
-      {/* Profile Navigation Options */}
-      <div className="bg-white border border-slate-200 rounded-3xl p-3 space-y-1 shadow-sm">
-        {/* Prominent Admin Panel Portal for Admin / Site Owner */}
-        <button
-          onClick={() => {
-            haptics.selection();
-            onNavigate('admin');
-          }}
-          className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-blue-900 transition-all mb-1 border border-blue-200 shadow-xs group"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
-              <Sliders size={18} />
+      {/* Real-time Deposit & Withdrawal Status Section */}
+      <div className="bg-white border border-slate-200 rounded-3xl p-4 shadow-sm space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+              <Receipt size={16} />
             </div>
-            <div className="text-left">
-              <span className="block font-chakra font-black text-blue-950 text-xs sm:text-sm">
-                {lang === 'bn' ? 'অ্যাডমিন প্যানেল ও সেটিংস' : 'Admin Management Panel'}
-              </span>
-              <span className="text-[10px] text-blue-700 font-semibold block">
-                {lang === 'bn' ? 'লোগো, ব্যানার, বিকাশ/নগদ নম্বর ও গেম কন্ট্রোল' : 'Logo, Banners, bKash/Nagad & Game Controls'}
-              </span>
+            <div>
+              <h3 className="font-chakra font-black text-slate-900 text-xs sm:text-sm">
+                {lang === 'bn' ? 'জমা ও উত্তোলনের রিয়েল-টাইম স্ট্যাটাস' : 'Deposit & Withdrawal Status'}
+              </h3>
+              <p className="text-[10px] text-slate-500 font-medium">
+                {lang === 'bn' ? 'লাইভ ব্যাকএন্ড স্টেটাস ট্র্যাকিং' : 'Real-time live transaction status'}
+              </p>
             </div>
           </div>
-          <span className="px-2 py-0.5 bg-blue-600 text-white rounded-full text-[10px] font-black uppercase tracking-wider">
-            ADMIN
-          </span>
-        </button>
 
+          <button
+            onClick={() => {
+              haptics.selection();
+              onNavigate('transactions');
+            }}
+            className="text-[11px] font-chakra font-black text-blue-600 hover:text-blue-700 flex items-center gap-0.5"
+          >
+            <span>{lang === 'bn' ? 'ক্যাশিয়ার' : 'Cashier'}</span>
+            <ChevronRight size={12} />
+          </button>
+        </div>
+
+        {/* Filter Pills */}
+        <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+          <button
+            onClick={() => {
+              haptics.selection();
+              setTxFilter('all');
+            }}
+            className={`flex-1 py-1.5 rounded-lg text-[11px] font-black transition-all ${
+              txFilter === 'all'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            {lang === 'bn' ? 'সকল' : 'All'}
+          </button>
+          <button
+            onClick={() => {
+              haptics.selection();
+              setTxFilter('deposit');
+            }}
+            className={`flex-1 py-1.5 rounded-lg text-[11px] font-black transition-all ${
+              txFilter === 'deposit'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-500 hover:text-emerald-700'
+            }`}
+          >
+            {lang === 'bn' ? 'ডিপোজিট' : 'Deposits'}
+          </button>
+          <button
+            onClick={() => {
+              haptics.selection();
+              setTxFilter('withdraw');
+            }}
+            className={`flex-1 py-1.5 rounded-lg text-[11px] font-black transition-all ${
+              txFilter === 'withdraw'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-500 hover:text-blue-700'
+            }`}
+          >
+            {lang === 'bn' ? 'উইথড্র' : 'Withdrawals'}
+          </button>
+        </div>
+
+        {/* Transaction Cards List */}
+        <div className="space-y-2 max-h-80 overflow-y-auto pr-0.5">
+          {loadingTx ? (
+            <div className="py-8 text-center text-xs text-slate-400 font-bold animate-pulse">
+              {lang === 'bn' ? 'লেনদেন লোড হচ্ছে...' : 'Loading transaction status...'}
+            </div>
+          ) : filteredTransactions.length === 0 ? (
+            <div className="py-8 text-center space-y-2">
+              <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                <History size={18} />
+              </div>
+              <p className="text-xs font-bold text-slate-500">
+                {txFilter === 'deposit'
+                  ? (lang === 'bn' ? 'কোনো ডিপোজিট রেকর্ড পাওয়া যায়নি' : 'No deposit records found')
+                  : txFilter === 'withdraw'
+                  ? (lang === 'bn' ? 'কোনো উত্তোলন রেকর্ড পাওয়া যায়নি' : 'No withdrawal records found')
+                  : (lang === 'bn' ? 'কোনো লেনদেনের রেকর্ড এখনও নেই' : 'No transactions recorded yet')}
+              </p>
+              <button
+                onClick={() => {
+                  haptics.selection();
+                  onNavigate('transactions');
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 text-xs font-black hover:bg-blue-100 transition-colors"
+              >
+                <ArrowDownLeft size={13} />
+                <span>{lang === 'bn' ? 'এখনই ডিপোজিট করুন' : 'Make a Deposit'}</span>
+              </button>
+            </div>
+          ) : (
+            filteredTransactions.map((tx) => {
+              const isDeposit = tx.type === 'deposit';
+              const trxDisplayId = tx.transactionId || tx.referenceId || tx.id;
+
+              return (
+                <div
+                  key={tx.id}
+                  className="bg-slate-50 hover:bg-slate-100/80 transition-colors border border-slate-200 rounded-2xl p-3 space-y-2"
+                >
+                  {/* Top line: Type, Method badge & Status */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                          isDeposit ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        {isDeposit ? <ArrowDownLeft size={14} /> : <ArrowUpRight size={14} />}
+                      </div>
+                      <div>
+                        <span className="font-chakra font-black text-xs text-slate-900 block leading-tight">
+                          {isDeposit
+                            ? (lang === 'bn' ? 'ডিপোজিট' : 'Deposit')
+                            : (lang === 'bn' ? 'উইথড্র' : 'Withdrawal')}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                          {tx.method || 'Mobile Banking'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      {getStatusBadge(tx.status)}
+                    </div>
+                  </div>
+
+                  {/* Amount & Time Row */}
+                  <div className="flex items-baseline justify-between pt-1 border-t border-slate-200/70">
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-medium block">
+                        {lang === 'bn' ? 'পরিমাণ' : 'Amount'}
+                      </span>
+                      <span
+                        className={`font-rajdhani font-black text-base sm:text-lg ${
+                          isDeposit ? 'text-emerald-600' : 'text-blue-700'
+                        }`}
+                      >
+                        {isDeposit ? '+' : '-'}৳{Number(tx.amount || 0).toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-[10px] text-slate-400 font-medium block">
+                        {lang === 'bn' ? 'তারিখ ও সময়' : 'Date & Time'}
+                      </span>
+                      <span className="text-[10px] font-mono font-semibold text-slate-600">
+                        {formatTxDate(tx.createdAt)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Transaction ID / Reference Row */}
+                  {trxDisplayId && (
+                    <div className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 text-[10px]">
+                      <span className="text-slate-500 font-medium">
+                        {lang === 'bn' ? 'ট্রানজেকশন আইডি / TrxID:' : 'Transaction ID / TrxID:'}
+                      </span>
+                      <button
+                        onClick={() => copyTxId(trxDisplayId)}
+                        className="flex items-center gap-1 font-mono font-bold text-blue-700 hover:text-blue-900"
+                        title="Copy Transaction ID"
+                      >
+                        <span className="truncate max-w-[150px]">{trxDisplayId}</span>
+                        {copiedTxId === trxDisplayId ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Sender Number if present */}
+                  {tx.senderNumber && (
+                    <div className="text-[10px] text-slate-500 flex items-center justify-between px-1">
+                      <span>{isDeposit ? (lang === 'bn' ? 'প্রেরক নম্বর:' : 'Sender No:') : (lang === 'bn' ? 'গ্রাহক নম্বর:' : 'Recipient No:')}</span>
+                      <span className="font-mono font-bold text-slate-700">{tx.senderNumber}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* Profile Navigation Options */}
+      <div className="bg-white border border-slate-200 rounded-3xl p-3 space-y-1 shadow-sm">
         <button
           onClick={() => {
             haptics.selection();
@@ -173,7 +454,21 @@ export default function MemberProfile({ user, userData, onNavigate }: MemberProf
         >
           <div className="flex items-center gap-2.5">
             <Wallet size={16} className="text-emerald-600" />
-            <span>{lang === 'bn' ? 'জমা ও উত্তোলনের ইতিহাস' : 'Deposit & Withdrawal Records'}</span>
+            <span>{lang === 'bn' ? 'জমা ও উত্তোলনের ক্যাশিয়ার' : 'Deposit & Cashier Management'}</span>
+          </div>
+          <ChevronRight size={14} className="text-slate-400" />
+        </button>
+
+        <button
+          onClick={() => {
+            haptics.selection();
+            onNavigate('history');
+          }}
+          className="w-full flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 text-slate-700 transition-all text-xs font-bold"
+        >
+          <div className="flex items-center gap-2.5">
+            <History size={16} className="text-blue-600" />
+            <span>{lang === 'bn' ? 'সম্পূর্ণ বেটিং ও অ্যাকাউন্ট ইতিহাস' : 'Full Betting & Account History'}</span>
           </div>
           <ChevronRight size={14} className="text-slate-400" />
         </button>
@@ -200,7 +495,7 @@ export default function MemberProfile({ user, userData, onNavigate }: MemberProf
           className="w-full flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 text-slate-700 transition-all text-xs font-bold"
         >
           <div className="flex items-center gap-2.5">
-            <Sparkles size={16} className="text-blue-600" />
+            <Sparkles size={16} className="text-indigo-600" />
             <span>{lang === 'bn' ? 'এজেন্ট পার্টনার প্রোগ্রাম (৪০%)' : 'Agent Affiliate Program'}</span>
           </div>
           <ChevronRight size={14} className="text-slate-400" />
@@ -255,3 +550,4 @@ export default function MemberProfile({ user, userData, onNavigate }: MemberProf
     </div>
   );
 }
+

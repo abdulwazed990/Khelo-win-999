@@ -241,7 +241,7 @@ export default function RouletteGame({ user, userData, onBack }: RouletteGamePro
   ];
 
   return (
-    <div className="min-h-screen bg-[#070b14] text-white font-sans flex flex-col max-w-6xl mx-auto border-x border-slate-800/80 select-none shadow-2xl">
+    <div className="min-h-[100dvh] bg-[#070b14] text-white font-sans flex flex-col max-w-6xl mx-auto border-x border-slate-800/80 select-none shadow-2xl overflow-x-hidden">
       {/* 1. Header Bar */}
       <header className="px-3 sm:px-6 py-2.5 bg-[#0b1120] border-b border-slate-800 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
@@ -481,7 +481,7 @@ export default function RouletteGame({ user, userData, onBack }: RouletteGamePro
           </div>
 
           {/* Outside Even Money Bets (1-18, Even, Red, Black, Odd, 19-36) */}
-          <div className="grid grid-cols-6 gap-1">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
             {[
               { key: 'low', label: '1-18' },
               { key: 'even', label: 'EVEN' },

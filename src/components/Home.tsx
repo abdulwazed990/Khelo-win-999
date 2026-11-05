@@ -235,18 +235,29 @@ export default function Home({
     return () => clearInterval(interval);
   }, [banners.length]);
 
-  // Provider list derived from loaded games
+  // Helper to identify Aviator game and hide from public listing
+  const isAviatorGame = (g: GameItem) => {
+    const slug = (g.slug || g.route || '').toLowerCase();
+    const id = (g.id || '').toLowerCase();
+    const name = (g.name || g.nameEn || g.title || g.titleEn || '').toLowerCase();
+    return slug.includes('aviator') || id.includes('aviator') || name.includes('aviator') || name.includes('এভিয়েটর');
+  };
+
+  // Provider list derived from loaded public games
   const providers = useMemo(() => {
     const set = new Set<string>();
     games.forEach(g => {
-      if (g.provider) set.add(g.provider);
+      if (!isAviatorGame(g) && g.provider) set.add(g.provider);
     });
     return Array.from(set);
   }, [games]);
 
-  // Filtered games based on active category & provider
+  // Filtered games based on active category & provider (Aviator hidden from public)
   const filteredGames = useMemo(() => {
     return games.filter(g => {
+      // Hide Aviator game from public website listing (accessible only via private admin link)
+      if (isAviatorGame(g)) return false;
+
       const matchCat = activeCategory === 'hot' 
         ? (g.hot || g.popular || g.featured || g.category === 'hot') 
         : g.category === activeCategory;
@@ -761,7 +772,7 @@ export default function Home({
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {[
             { user: '017***492', game: 'Super Ace', win: '৳৪৫,২০০' },
-            { user: '018***811', game: 'Aviator Jet', win: '৳৮২,৫০০' },
+            { user: '018***811', game: 'Mines Vault', win: '৳৮২,৫০০' },
             { user: '019***304', game: 'Boxer King', win: '৳২৮,৪০০' }
           ].map((w, idx) => (
             <div key={idx} className="p-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs">

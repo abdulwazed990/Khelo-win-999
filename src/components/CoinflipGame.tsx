@@ -152,7 +152,7 @@ export default function CoinflipGame({ user, userData, onBack }: CoinflipGamePro
   const quickBets = [20, 50, 100, 200, 500, 1000];
 
   return (
-    <div className="min-h-screen bg-[#070b14] text-white font-sans flex flex-col max-w-4xl mx-auto border-x border-slate-800/80 select-none shadow-2xl">
+    <div className="min-h-[100dvh] bg-[#070b14] text-white font-sans flex flex-col max-w-4xl mx-auto border-x border-slate-800/80 select-none shadow-2xl overflow-x-hidden">
       {/* 1. Header Bar */}
       <header className="px-4 sm:px-6 py-3 bg-[#0b1120] border-b border-slate-800 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
@@ -383,7 +383,7 @@ export default function CoinflipGame({ user, userData, onBack }: CoinflipGamePro
             </div>
 
             {/* Quick Chips */}
-            <div className="grid grid-cols-6 gap-1">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
               {quickBets.map(amt => (
                 <button
                   key={amt}

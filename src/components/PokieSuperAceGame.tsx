@@ -1363,7 +1363,7 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
 
   return (
     <div 
-      className="h-screen max-h-screen flex flex-col items-center text-white font-sans select-none overflow-hidden safe-area-inset-bottom"
+      className="h-[100dvh] max-h-[100dvh] w-full flex flex-col items-center text-white font-sans select-none overflow-y-auto sm:overflow-hidden safe-area-inset-bottom"
       style={{ background: 'radial-gradient(circle at center, #1a1a2e 0%, #0a0a0a 100%)' }}
     >
       <AnimatePresence>
@@ -1563,7 +1563,7 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       </div>
 
       {/* Bottom Controls */}
-      <div className="w-full max-w-md bg-gradient-to-t from-black via-black/95 to-black/80 backdrop-blur-xl border-t border-yellow-900/40 p-4 pb-6 flex flex-col gap-4">
+      <div className="w-full max-w-md bg-gradient-to-t from-black via-black/95 to-black/80 backdrop-blur-xl border-t border-yellow-900/40 p-2.5 sm:p-4 pb-3 sm:pb-6 flex flex-col gap-2 sm:gap-4 shrink-0">
         <div className="flex justify-between items-end px-2 sm:px-4">
           
           {/* Left Controls */}

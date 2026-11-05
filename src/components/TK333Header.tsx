@@ -381,24 +381,6 @@ export default function TK333Header({
                     label={lang === 'bn' ? 'সদস্য কেন্দ্র (প্রোফাইল)' : 'Member Center'} 
                     onClick={() => handleNavClick('member')} 
                   />
-                  
-                  {/* Admin Portal Link */}
-                  <div className="pt-2 mt-2 border-t border-slate-100">
-                    <button
-                      onClick={() => handleNavClick('admin')}
-                      className="w-full flex items-center justify-between p-2.5 rounded-xl bg-blue-50/80 hover:bg-blue-100 text-blue-900 transition-all text-xs font-bold border border-blue-200 group"
-                    >
-                      <span className="flex items-center gap-2.5">
-                        <Sliders size={15} className="text-blue-600 group-hover:scale-110 transition-transform" />
-                        <span className="text-xs font-chakra font-black text-blue-900">
-                          {lang === 'bn' ? 'অ্যাডমিন প্যানেল' : 'Admin Panel'}
-                        </span>
-                      </span>
-                      <span className="px-1.5 py-0.5 bg-blue-600 text-white rounded-md text-[9px] font-black uppercase">
-                        CMS
-                      </span>
-                    </button>
-                  </div>
                 </div>
               </div>
 

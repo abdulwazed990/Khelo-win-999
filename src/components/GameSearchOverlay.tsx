@@ -44,12 +44,21 @@ export default function GameSearchOverlay({
     return () => unsubscribe();
   }, []);
 
-  // Filter games based on Bengali & English search query
-  const filteredGames = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
-    if (!q) return games.filter(g => g.hot || g.popular || g.featured).slice(0, 12);
+  // Helper to identify Aviator and exclude from public search
+  const isAviatorGame = (game: GameItem) => {
+    const bnName = (game.nameBn || game.titleBn || '').toLowerCase();
+    const enName = (game.nameEn || game.name || game.title || '').toLowerCase();
+    const slug = (game.slug || game.route || game.id || '').toLowerCase();
+    return slug.includes('aviator') || bnName.includes('এভিয়েটর') || enName.includes('aviator');
+  };
 
-    return games.filter((game) => {
+  // Filter games based on Bengali & English search query (Aviator excluded)
+  const filteredGames = useMemo(() => {
+    const publicGames = games.filter(g => !isAviatorGame(g));
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return publicGames.filter(g => g.hot || g.popular || g.featured).slice(0, 12);
+
+    return publicGames.filter((game) => {
       const bnName = (game.nameBn || game.titleBn || '').toLowerCase();
       const enName = (game.nameEn || game.name || game.title || '').toLowerCase();
       const provider = (game.provider || '').toLowerCase();
@@ -69,7 +78,7 @@ export default function GameSearchOverlay({
   const popularSearches = [
     { label: 'Super Ace', query: 'Super Ace' },
     { label: 'Mines', query: 'Mines' },
-    { label: 'Aviator Jet', query: 'Aviator' },
+    { label: 'Coin Flip', query: 'Coin Flip' },
     { label: 'Boxer King', query: 'Boxer' },
     { label: 'Roulette', query: 'Roulette' },
     { label: 'সুপার এস', query: 'সুপার এস' },

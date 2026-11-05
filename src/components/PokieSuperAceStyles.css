@@ -127,12 +127,18 @@
 }
 
 :root {
-  --row-height: clamp(65px, 11vh, 85px);
+  --row-height: clamp(52px, 8.5vh, 78px);
 }
 
 @media (max-width: 640px) {
   :root {
-    --row-height: clamp(55px, 10vh, 75px);
+    --row-height: clamp(42px, 7.6vh, 64px);
+  }
+}
+
+@media (max-height: 680px) {
+  :root {
+    --row-height: clamp(36px, 6.6vh, 50px);
   }
 }
 

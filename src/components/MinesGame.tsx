@@ -247,7 +247,7 @@ export default function MinesGame({ user, userData, onBack }: MinesGameProps) {
   const quickBets = [20, 50, 100, 200, 500, 1000];
 
   return (
-    <div className="min-h-screen bg-[#070b14] text-white font-sans flex flex-col max-w-5xl mx-auto border-x border-slate-800/80 select-none shadow-2xl">
+    <div className="min-h-[100dvh] bg-[#070b14] text-white font-sans flex flex-col max-w-5xl mx-auto border-x border-slate-800/80 select-none shadow-2xl overflow-x-hidden">
       {/* 1. Header Bar */}
       <header className="px-3 sm:px-6 py-3 bg-[#0b1120] border-b border-slate-800 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center gap-3">
@@ -461,15 +461,15 @@ export default function MinesGame({ user, userData, onBack }: MinesGameProps) {
         </div>
 
         {/* Right Column: 5x5 Heavy Vault Grid (lg:col-span-7) */}
-        <div className="lg:col-span-7 flex flex-col items-center justify-center">
-          <div className="w-full max-w-[440px] aspect-square bg-[#0b1120] p-3 sm:p-4 rounded-3xl border-2 border-slate-800 shadow-[0_0_40px_rgba(0,0,0,0.8)] relative">
+        <div className="lg:col-span-7 flex flex-col items-center justify-center w-full">
+          <div className="w-full max-w-[340px] sm:max-w-[440px] aspect-square bg-[#0b1120] p-2.5 sm:p-4 rounded-3xl border-2 border-slate-800 shadow-[0_0_40px_rgba(0,0,0,0.8)] relative mx-auto">
             {/* Corner Decorative Rivets */}
             <div className="absolute top-2 left-2 w-2 h-2 rounded-full bg-slate-700" />
             <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-slate-700" />
             <div className="absolute bottom-2 left-2 w-2 h-2 rounded-full bg-slate-700" />
             <div className="absolute bottom-2 right-2 w-2 h-2 rounded-full bg-slate-700" />
 
-            <div className="grid grid-cols-5 gap-2 w-full h-full">
+            <div className="grid grid-cols-5 gap-1.5 sm:gap-2 w-full h-full">
               {grid.map((state, idx) => {
                 const isRevealed = revealed[idx];
                 const isGem = state === 'gem';
