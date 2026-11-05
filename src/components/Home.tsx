@@ -235,28 +235,28 @@ export default function Home({
     return () => clearInterval(interval);
   }, [banners.length]);
 
-  // Helper to identify Aviator game and hide from public listing
-  const isAviatorGame = (g: GameItem) => {
+  // Helper to identify Signal/Prediction app and strictly exclude from public games list
+  const isSignalOrPredictionItem = (g: GameItem) => {
     const slug = (g.slug || g.route || '').toLowerCase();
     const id = (g.id || '').toLowerCase();
     const name = (g.name || g.nameEn || g.title || g.titleEn || '').toLowerCase();
-    return slug.includes('aviator') || id.includes('aviator') || name.includes('aviator') || name.includes('এভিয়েটর');
+    return slug.includes('signal') || slug.includes('predict') || id.includes('signal') || id.includes('predict') || name.includes('signal') || name.includes('predict') || name.includes('সিগন্যাল') || name.includes('প্রেডিকশন');
   };
 
   // Provider list derived from loaded public games
   const providers = useMemo(() => {
     const set = new Set<string>();
     games.forEach(g => {
-      if (!isAviatorGame(g) && g.provider) set.add(g.provider);
+      if (!isSignalOrPredictionItem(g) && g.provider) set.add(g.provider);
     });
     return Array.from(set);
   }, [games]);
 
-  // Filtered games based on active category & provider (Aviator hidden from public)
+  // Filtered games based on active category & provider (Aviator visible, Signal app hidden)
   const filteredGames = useMemo(() => {
     return games.filter(g => {
-      // Hide Aviator game from public website listing (accessible only via private admin link)
-      if (isAviatorGame(g)) return false;
+      // Completely hide Signal / Prediction app from public website
+      if (isSignalOrPredictionItem(g)) return false;
 
       const matchCat = activeCategory === 'hot' 
         ? (g.hot || g.popular || g.featured || g.category === 'hot') 
@@ -772,7 +772,7 @@ export default function Home({
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           {[
             { user: '017***492', game: 'Super Ace', win: '৳৪৫,২০০' },
-            { user: '018***811', game: 'Mines Vault', win: '৳৮২,৫০০' },
+            { user: '018***811', game: 'Aviator Jet', win: '৳৮২,৫০০' },
             { user: '019***304', game: 'Boxer King', win: '৳২৮,৪০০' }
           ].map((w, idx) => (
             <div key={idx} className="p-2 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs">

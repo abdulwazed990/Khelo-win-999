@@ -14,6 +14,7 @@ import {
   History, 
   LogOut, 
   ShieldCheck, 
+  Sliders,
   ChevronRight, 
   Coins, 
   Sparkles,
@@ -445,6 +446,34 @@ export default function MemberProfile({ user, userData, onNavigate }: MemberProf
 
       {/* Profile Navigation Options */}
       <div className="bg-white border border-slate-200 rounded-3xl p-3 space-y-1 shadow-sm">
+        {/* Admin Portal (Visible initially for setup; hidden permanently once administrator toggles Hide Admin Panel) */}
+        {!(typeof window !== 'undefined' && localStorage.getItem('tk333_admin_panel_hidden') === 'true') && (
+          <button
+            onClick={() => {
+              haptics.selection();
+              onNavigate('admin');
+            }}
+            className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-blue-900 transition-all text-xs font-bold border border-blue-200 shadow-xs mb-1 group"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
+                <Sliders size={16} />
+              </div>
+              <div className="text-left">
+                <span className="block font-chakra font-black text-blue-950 text-xs">
+                  {lang === 'bn' ? 'অ্যাডমিন প্যানেল ও সেটিংস' : 'Admin Management Panel'}
+                </span>
+                <span className="text-[10px] text-blue-600 font-semibold block">
+                  {lang === 'bn' ? 'প্রাইভেট লিঙ্ক ও সার্বিক নিয়ন্ত্রণ' : 'Private Links & Configuration'}
+                </span>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 bg-blue-600 text-white rounded-full text-[9px] font-black uppercase">
+              CMS
+            </span>
+          </button>
+        )}
+
         <button
           onClick={() => {
             haptics.selection();

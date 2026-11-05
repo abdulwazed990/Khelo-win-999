@@ -308,6 +308,8 @@ export interface SiteSettings {
   depositNagadNumbers?: string[]; // Up to 10 Nagad numbers for shuffle/rotation
   depositRocketNumbers?: string[];
   depositUpayNumbers?: string[];
+  adminPanelHidden?: boolean; // Controls whether admin entry is hidden from the public website
+  signalAppUrl?: string; // Private authoritative Signal App URL
   configVersion?: number;
   updatedAt?: string;
   updatedBy?: string;

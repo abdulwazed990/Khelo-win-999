@@ -36,6 +36,7 @@ import {
   Trash2, 
   Edit3, 
   Eye, 
+  EyeOff,
   Check, 
   X, 
   Image as ImageIcon, 
@@ -357,9 +358,13 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
   const [savingProb, setSavingProb] = useState<boolean>(false);
   const [copiedPrivateAdminUrl, setCopiedPrivateAdminUrl] = useState<boolean>(false);
   const [copiedPrivateAviatorUrl, setCopiedPrivateAviatorUrl] = useState<boolean>(false);
+  const [copiedSignalUrl, setCopiedSignalUrl] = useState<boolean>(false);
+  const [isUpdatingVisibility, setIsUpdatingVisibility] = useState<boolean>(false);
 
   const privateAdminUrl = typeof window !== 'undefined' ? `${window.location.origin}/#admin` : 'https://www.tk-333bd.com/#admin';
   const privateAviatorUrl = typeof window !== 'undefined' ? `${window.location.origin}/#aviator` : 'https://www.tk-333bd.com/#aviator';
+  const signalAppUrl = typeof window !== 'undefined' ? `${window.location.origin}/#signal` : 'https://www.tk-333bd.com/#signal';
+  const isPanelHidden = settings?.adminPanelHidden === true || (typeof window !== 'undefined' && localStorage.getItem('tk333_admin_panel_hidden') === 'true');
 
   const showToast = (msg: string) => {
     setSaveSuccessMessage(msg);
@@ -380,6 +385,44 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
     setCopiedPrivateAviatorUrl(true);
     showToast(lang === 'bn' ? '✓ প্রাইভেট এভিয়েটর গেম লিংক কপি হয়েছে!' : '✓ Private Aviator URL copied to clipboard!');
     setTimeout(() => setCopiedPrivateAviatorUrl(false), 2500);
+  };
+
+  const handleCopySignalAppUrl = () => {
+    haptics.success();
+    navigator.clipboard.writeText(signalAppUrl);
+    setCopiedSignalUrl(true);
+    showToast(lang === 'bn' ? '✓ সিগন্যাল অ্যাপ লিংক কপি হয়েছে!' : '✓ Signal App URL copied to clipboard!');
+    setTimeout(() => setCopiedSignalUrl(false), 2500);
+  };
+
+  const handleToggleAdminVisibility = async () => {
+    setIsUpdatingVisibility(true);
+    const targetState = !isPanelHidden;
+    try {
+      await updateDoc(doc(db, 'settings', 'site'), {
+        adminPanelHidden: targetState
+      });
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tk333_admin_panel_hidden', String(targetState));
+      }
+      setSettings(prev => prev ? ({ ...prev, adminPanelHidden: targetState }) : null);
+      haptics.success();
+      showToast(
+        targetState 
+          ? (lang === 'bn' ? '✓ অ্যাডমিন প্যানেল পাবলিক ওয়েবসাইট থেকে সফলভাবে লুকানো হয়েছে! আপনার প্রাইভেট লিঙ্কটি সংরক্ষিত রাখুন।' : '✓ Admin Panel is now HIDDEN from the public website! Access via your private URL.') 
+          : (lang === 'bn' ? '✓ অ্যাডমিন প্যানেল পাবলিক ওয়েবসাইটে দৃশ্যমান করা হয়েছে।' : '✓ Admin Panel is now VISIBLE on the public website.')
+      );
+    } catch (e: any) {
+      console.warn('Could not update admin visibility setting:', e);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tk333_admin_panel_hidden', String(targetState));
+      }
+      setSettings(prev => prev ? ({ ...prev, adminPanelHidden: targetState }) : null);
+      haptics.success();
+      showToast(targetState ? '✓ Admin Panel hidden locally!' : '✓ Admin Panel made visible locally!');
+    } finally {
+      setIsUpdatingVisibility(false);
+    }
   };
 
   const getGameDirectLink = (game: GameItem) => {
@@ -1343,65 +1386,166 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
               </div>
 
               {/* Dedicated Private Admin & Game Access Card */}
-              <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-4 sm:p-5 border border-indigo-500/40 shadow-lg space-y-3">
-                <div className="flex items-center justify-between">
+              <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-4 sm:p-5 border border-indigo-500/40 shadow-lg space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-indigo-500/20">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center">
                       <ShieldCheck size={18} />
                     </div>
                     <div>
                       <h3 className="font-chakra font-black text-sm text-white">
-                        {lang === 'bn' ? '🔒 প্রাইভেট অ্যাডমিন ও এক্সক্লুসিভ গেম লিঙ্ক' : '🔒 Private Admin & Exclusive Game Links'}
+                        {lang === 'bn' ? '🔒 অ্যাডমিন প্যানেল দৃশ্যমানতা ও প্রাইভেট অ্যাক্সেস কন্ট্রোল' : '🔒 Admin Panel Visibility & Private Access Control'}
                       </h3>
                       <p className="text-[11px] text-indigo-200">
-                        {lang === 'bn' ? 'সাধারণ ওয়েবসাইট থেকে এই লিঙ্কগুলো সম্পূর্ণ গোপন ও সুরক্ষিত।' : 'Hidden from the public site for security & exclusive sharing.'}
+                        {lang === 'bn' ? 'অ্যাডমিন প্যানেল হাইড বা শো করুন এবং প্রাইভেট সিগন্যাল লিংক পরিচালনা করুন।' : 'Control Admin Panel visibility and manage private signal/game links.'}
                       </p>
                     </div>
                   </div>
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-mono font-bold uppercase">
-                    ACTIVE
-                  </span>
-                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                  {/* Private Admin Panel URL */}
-                  <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-1.5">
-                    <span className="text-[10px] font-chakra font-bold text-slate-400 uppercase tracking-wider block">
-                      {lang === 'bn' ? 'প্রাইভেট অ্যাডমিন প্যানেল URL (Private Admin URL):' : 'Private Admin Panel URL:'}
-                    </span>
-                    <div className="flex items-center justify-between gap-2 bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-700/80">
-                      <span className="font-mono text-xs text-indigo-300 truncate">{privateAdminUrl}</span>
-                      <button
-                        onClick={handleCopyPrivateAdminUrl}
-                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-[10px] font-black uppercase flex items-center gap-1 shrink-0 transition-colors"
-                      >
-                        {copiedPrivateAdminUrl ? <Check size={12} /> : <Copy size={12} />}
-                        <span>{copiedPrivateAdminUrl ? (lang === 'bn' ? 'কপি!' : 'Copied!') : (lang === 'bn' ? 'কপি লিঙ্ক' : 'Copy URL')}</span>
-                      </button>
-                    </div>
-                    <span className="text-[10px] text-slate-500 block">
-                      {lang === 'bn' ? '✓ পাবলিক সাইট থেকে লুকানো। শুধুমাত্র মাস্টার পাসওয়ার্ড দিয়ে এক্সেসযোগ্য।' : '✓ Completely hidden from public site. Requires master login.'}
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold uppercase border ${
+                      isPanelHidden
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                        : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    }`}>
+                      {isPanelHidden ? (lang === 'bn' ? 'পাবলিক সাইট থেকে লুকানো' : 'HIDDEN FROM PUBLIC') : (lang === 'bn' ? 'পাবলিক সাইটে দৃশ্যমান' : 'VISIBLE ON WEBSITE')}
                     </span>
                   </div>
+                </div>
 
-                  {/* Private Aviator Jet Game URL */}
-                  <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-1.5">
-                    <span className="text-[10px] font-chakra font-bold text-slate-400 uppercase tracking-wider block">
-                      {lang === 'bn' ? 'প্রাইভেট এভিয়েটর জেট গেম URL (Private Game URL):' : 'Private Aviator Game URL:'}
-                    </span>
-                    <div className="flex items-center justify-between gap-2 bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-700/80">
-                      <span className="font-mono text-xs text-rose-300 truncate">{privateAviatorUrl}</span>
-                      <button
-                        onClick={handleCopyPrivateAviatorUrl}
-                        className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-md text-[10px] font-black uppercase flex items-center gap-1 shrink-0 transition-colors"
-                      >
-                        {copiedPrivateAviatorUrl ? <Check size={12} /> : <Copy size={12} />}
-                        <span>{copiedPrivateAviatorUrl ? (lang === 'bn' ? 'কপি!' : 'Copied!') : (lang === 'bn' ? 'কপি লিঙ্ক' : 'Copy URL')}</span>
-                      </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {/* 1. Admin Panel URL & Hide/Show Control */}
+                  <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-2 flex flex-col justify-between">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-chakra font-bold text-slate-400 uppercase tracking-wider">
+                          {lang === 'bn' ? 'প্রাইভেট অ্যাডমিন URL:' : 'Private Admin URL:'}
+                        </span>
+                        <span className="text-[9px] font-mono text-indigo-400 font-bold">SECURED</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-1.5 bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-700/80">
+                        <span className="font-mono text-xs text-indigo-300 truncate">{privateAdminUrl}</span>
+                        <button
+                          onClick={handleCopyPrivateAdminUrl}
+                          className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[10px] font-black uppercase flex items-center gap-1 shrink-0 transition-colors"
+                          title="Copy Private Admin URL"
+                        >
+                          {copiedPrivateAdminUrl ? <Check size={11} /> : <Copy size={11} />}
+                          <span>{copiedPrivateAdminUrl ? (lang === 'bn' ? 'কপি!' : 'Copied!') : (lang === 'bn' ? 'কপি' : 'Copy')}</span>
+                        </button>
+                      </div>
                     </div>
-                    <span className="text-[10px] text-slate-500 block">
-                      {lang === 'bn' ? '✓ হোমপেজ ও সার্চ থেকে লুকানো। নির্দিষ্ট খেলোয়াড়দের সাথে শেয়ার করুন।' : '✓ Hidden from public homepage & search. Share with chosen players.'}
-                    </span>
+
+                    <div className="pt-2 border-t border-slate-800/80">
+                      <button
+                        onClick={handleToggleAdminVisibility}
+                        disabled={isUpdatingVisibility}
+                        className={`w-full py-2 px-3 rounded-lg text-xs font-chakra font-black flex items-center justify-center gap-1.5 transition-all shadow-sm active:scale-95 border ${
+                          isPanelHidden
+                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500'
+                            : 'bg-rose-600 hover:bg-rose-500 text-white border-rose-500'
+                        }`}
+                      >
+                        {isPanelHidden ? <Eye size={13} /> : <EyeOff size={13} />}
+                        <span>
+                          {isUpdatingVisibility
+                            ? (lang === 'bn' ? 'আপডেট হচ্ছে...' : 'Updating...')
+                            : isPanelHidden
+                            ? (lang === 'bn' ? 'পাবলিক সাইটে দৃশ্যমান করুন' : 'Show Admin on Public Site')
+                            : (lang === 'bn' ? 'পাবলিক সাইট থেকে হাইড করুন' : 'Hide Admin from Public Site')}
+                        </span>
+                      </button>
+                      <span className="text-[9px] text-slate-400 block text-center mt-1">
+                        {isPanelHidden
+                          ? (lang === 'bn' ? '✓ লিংকটি গোপনে সেভ রাখুন। সাধারণ ব্যবহারকারীরা প্রবেশ করতে পারবে না।' : '✓ Hidden from public. Access anytime via private URL.')
+                          : (lang === 'bn' ? 'লুকানোর পর শুধুমাত্র প্রাইভেট লিংক দিয়ে প্রবেশ করা যাবে।' : 'Click to immediately hide from public drawer & profile.')}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 2. Signal / Prediction App Section (Admin-Only Link Access) */}
+                  <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-2 flex flex-col justify-between">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-chakra font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                          <Radio size={12} className="text-red-500 animate-pulse" />
+                          <span>{lang === 'bn' ? 'সিগন্যাল অ্যাপ লিংক (Signal App):' : 'Signal App Private Link:'}</span>
+                        </span>
+                        <span className="text-[9px] font-mono text-red-400 font-bold">ADMIN ONLY</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-1.5 bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-700/80">
+                        <span className="font-mono text-xs text-red-300 truncate">{signalAppUrl}</span>
+                        <button
+                          onClick={handleCopySignalAppUrl}
+                          className="px-2 py-1 bg-red-600 hover:bg-red-500 text-white rounded text-[10px] font-black uppercase flex items-center gap-1 shrink-0 transition-colors"
+                          title="Copy Signal App Link"
+                        >
+                          {copiedSignalUrl ? <Check size={11} /> : <Copy size={11} />}
+                          <span>{copiedSignalUrl ? (lang === 'bn' ? 'কপি!' : 'Copied!') : (lang === 'bn' ? 'কপি' : 'Copy')}</span>
+                        </button>
+                      </div>
+                      <span className="text-[10px] text-slate-400 block">
+                        {lang === 'bn' ? '✓ সাধারণ সাইট থেকে সিগন্যাল অ্যাপ ১০০% গোপন রাখা হয়েছে।' : '✓ Completely hidden from public site and search.'}
+                      </span>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-800/80">
+                      <button
+                        onClick={() => {
+                          haptics.selection();
+                          setActiveTab('signals');
+                        }}
+                        className="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-chakra font-black flex items-center justify-center gap-1.5 border border-slate-700 transition-all active:scale-95"
+                      >
+                        <ExternalLink size={13} className="text-purple-400" />
+                        <span>{lang === 'bn' ? 'সিগন্যাল ইঞ্জিন ম্যানেজ করুন' : 'Manage Signal Engine'}</span>
+                      </button>
+                      <span className="text-[9px] text-slate-400 block text-center mt-1">
+                        {lang === 'bn' ? 'টোকেন তৈরি ও কাস্টমার শেয়ারিং ম্যানেজমেন্ট' : 'Generate access tokens & manage broadcasts'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 3. Aviator Game Direct Link */}
+                  <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 space-y-2 flex flex-col justify-between">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-chakra font-bold text-slate-400 uppercase tracking-wider">
+                          {lang === 'bn' ? 'এভিয়েটর জেট গেম লিংক (Aviator):' : 'Aviator Game Direct Link:'}
+                        </span>
+                        <span className="text-[9px] font-mono text-emerald-400 font-bold">HOMEPAGE ON</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-1.5 bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-700/80">
+                        <span className="font-mono text-xs text-amber-300 truncate">{privateAviatorUrl}</span>
+                        <button
+                          onClick={handleCopyPrivateAviatorUrl}
+                          className="px-2 py-1 bg-amber-600 hover:bg-amber-500 text-black rounded text-[10px] font-black uppercase flex items-center gap-1 shrink-0 transition-colors"
+                          title="Copy Aviator Direct Link"
+                        >
+                          {copiedPrivateAviatorUrl ? <Check size={11} /> : <Copy size={11} />}
+                          <span>{copiedPrivateAviatorUrl ? (lang === 'bn' ? 'কপি!' : 'Copied!') : (lang === 'bn' ? 'কপি' : 'Copy')}</span>
+                        </button>
+                      </div>
+                      <span className="text-[10px] text-slate-400 block">
+                        {lang === 'bn' ? '✓ হোমপেজে দৃশ্যমান এবং এই ডিরেক্ট লিংকেও খেলা যাবে।' : '✓ Visible on homepage & playable via direct link.'}
+                      </span>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-800/80">
+                      <button
+                        onClick={() => {
+                          haptics.selection();
+                          window.location.hash = 'aviator';
+                        }}
+                        className="w-full py-2 px-3 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-chakra font-black flex items-center justify-center gap-1.5 border border-amber-500/40 transition-all active:scale-95"
+                      >
+                        <Gamepad2 size={13} />
+                        <span>{lang === 'bn' ? 'গেম টেস্ট করুন (Launch)' : 'Test Launch Game'}</span>
+                      </button>
+                      <span className="text-[9px] text-slate-400 block text-center mt-1">
+                        {lang === 'bn' ? 'মোবাইল ও ডেক্সটপ রেসপন্সিভ টেস্ট' : 'Responsive launch check'}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>

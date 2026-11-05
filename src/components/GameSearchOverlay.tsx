@@ -44,17 +44,17 @@ export default function GameSearchOverlay({
     return () => unsubscribe();
   }, []);
 
-  // Helper to identify Aviator and exclude from public search
-  const isAviatorGame = (game: GameItem) => {
+  // Helper to identify Signal/Prediction and exclude from public search
+  const isSignalOrPredictionItem = (game: GameItem) => {
     const bnName = (game.nameBn || game.titleBn || '').toLowerCase();
     const enName = (game.nameEn || game.name || game.title || '').toLowerCase();
     const slug = (game.slug || game.route || game.id || '').toLowerCase();
-    return slug.includes('aviator') || bnName.includes('এভিয়েটর') || enName.includes('aviator');
+    return slug.includes('signal') || slug.includes('predict') || bnName.includes('সিগন্যাল') || bnName.includes('প্রেডিকশন') || enName.includes('signal') || enName.includes('predict');
   };
 
-  // Filter games based on Bengali & English search query (Aviator excluded)
+  // Filter games based on Bengali & English search query (Aviator visible, Signal excluded)
   const filteredGames = useMemo(() => {
-    const publicGames = games.filter(g => !isAviatorGame(g));
+    const publicGames = games.filter(g => !isSignalOrPredictionItem(g));
     const q = searchTerm.trim().toLowerCase();
     if (!q) return publicGames.filter(g => g.hot || g.popular || g.featured).slice(0, 12);
 
@@ -76,12 +76,12 @@ export default function GameSearchOverlay({
   }, [games, searchTerm]);
 
   const popularSearches = [
+    { label: 'Aviator Jet', query: 'Aviator' },
     { label: 'Super Ace', query: 'Super Ace' },
     { label: 'Mines', query: 'Mines' },
-    { label: 'Coin Flip', query: 'Coin Flip' },
     { label: 'Boxer King', query: 'Boxer' },
     { label: 'Roulette', query: 'Roulette' },
-    { label: 'সুপার এস', query: 'সুপার এস' },
+    { label: 'Coin Flip', query: 'Coin Flip' },
   ];
 
   if (!isOpen) return null;
