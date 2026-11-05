@@ -3322,7 +3322,7 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                         const existingList = Array.isArray(settings?.depositBkashNumbers) 
                           ? [...settings.depositBkashNumbers] 
                           : (settings?.depositBkashNumber ? [settings.depositBkashNumber] : []);
-                        const currentVal = existingList[idx] || (idx === 0 && !existingList.length ? (settings?.depositBkashNumber || '01641404837') : '');
+                        const currentVal = existingList[idx] || (idx === 0 && !existingList.length ? (settings?.depositBkashNumber || '') : '');
 
                         return (
                           <div key={`bkash_${idx}`} className="flex items-center gap-1.5 bg-white p-1.5 rounded-xl border border-pink-200">
@@ -3338,10 +3338,11 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                                 const nextArr = [...existingList];
                                 while (nextArr.length <= idx) nextArr.push('');
                                 nextArr[idx] = val;
+                                const primary = nextArr.find(n => n.trim().length > 0) || '';
                                 setSettings(prev => ({
                                   ...prev,
                                   depositBkashNumbers: nextArr,
-                                  depositBkashNumber: nextArr.find(n => n.trim().length > 0) || '01641404837'
+                                  depositBkashNumber: primary
                                 }));
                               }}
                               className="w-full px-2 py-1 bg-transparent text-xs font-mono font-bold text-slate-900 focus:outline-hidden"
@@ -3352,10 +3353,11 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                                 onClick={() => {
                                   const nextArr = [...existingList];
                                   nextArr[idx] = '';
+                                  const primary = nextArr.find(n => n.trim().length > 0) || '';
                                   setSettings(prev => ({
                                     ...prev,
                                     depositBkashNumbers: nextArr,
-                                    depositBkashNumber: nextArr.find(n => n.trim().length > 0) || '01641404837'
+                                    depositBkashNumber: primary
                                   }));
                                 }}
                                 className="p-1 text-slate-400 hover:text-rose-600 rounded"
@@ -3386,7 +3388,7 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                         const existingList = Array.isArray(settings?.depositNagadNumbers) 
                           ? [...settings.depositNagadNumbers] 
                           : (settings?.depositNagadNumber ? [settings.depositNagadNumber] : []);
-                        const currentVal = existingList[idx] || (idx === 0 && !existingList.length ? (settings?.depositNagadNumber || '01641404837') : '');
+                        const currentVal = existingList[idx] || (idx === 0 && !existingList.length ? (settings?.depositNagadNumber || '') : '');
 
                         return (
                           <div key={`nagad_${idx}`} className="flex items-center gap-1.5 bg-white p-1.5 rounded-xl border border-amber-200">
@@ -3402,10 +3404,11 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                                 const nextArr = [...existingList];
                                 while (nextArr.length <= idx) nextArr.push('');
                                 nextArr[idx] = val;
+                                const primary = nextArr.find(n => n.trim().length > 0) || '';
                                 setSettings(prev => ({
                                   ...prev,
                                   depositNagadNumbers: nextArr,
-                                  depositNagadNumber: nextArr.find(n => n.trim().length > 0) || '01641404837'
+                                  depositNagadNumber: primary
                                 }));
                               }}
                               className="w-full px-2 py-1 bg-transparent text-xs font-mono font-bold text-slate-900 focus:outline-hidden"
@@ -3416,10 +3419,11 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                                 onClick={() => {
                                   const nextArr = [...existingList];
                                   nextArr[idx] = '';
+                                  const primary = nextArr.find(n => n.trim().length > 0) || '';
                                   setSettings(prev => ({
                                     ...prev,
                                     depositNagadNumbers: nextArr,
-                                    depositNagadNumber: nextArr.find(n => n.trim().length > 0) || '01641404837'
+                                    depositNagadNumber: primary
                                   }));
                                 }}
                                 className="p-1 text-slate-400 hover:text-rose-600 rounded"
@@ -3439,9 +3443,9 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                       <label className="text-[10px] font-bold text-slate-700 uppercase">রকেট নম্বর (Rocket):</label>
                       <input
                         type="text"
-                        value={settings?.depositRocketNumber ?? '01641404837'}
+                        value={settings?.depositRocketNumber ?? ''}
                         onChange={(e) => setSettings(prev => ({ ...prev, depositRocketNumber: e.target.value }))}
-                        placeholder="01641404837"
+                        placeholder="01XXXXXXXXX"
                         className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-mono font-bold"
                       />
                     </div>
@@ -3450,9 +3454,9 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                       <label className="text-[10px] font-bold text-slate-700 uppercase">উপায় নম্বর (Upay):</label>
                       <input
                         type="text"
-                        value={settings?.depositUpayNumber ?? '01641404837'}
+                        value={settings?.depositUpayNumber ?? ''}
                         onChange={(e) => setSettings(prev => ({ ...prev, depositUpayNumber: e.target.value }))}
-                        placeholder="01641404837"
+                        placeholder="01XXXXXXXXX"
                         className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-mono font-bold"
                       />
                     </div>
@@ -3463,21 +3467,10 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
                   <div className="text-xs font-black font-chakra text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
                     <MessageSquare size={14} className="text-blue-600" />
-                    <span>{lang === 'bn' ? '৫. সাপোর্ট ও সোশ্যাল চ্যানেল' : '5. Support & Social Channels'}</span>
+                    <span>{lang === 'bn' ? '৫. অফিসিয়াল সাপোর্ট ও সোশ্যাল চ্যানেল' : '5. Support & Social Channels'}</span>
                   </div>
 
                   <div className="space-y-3">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-700 uppercase">হোয়াটসঅ্যাপ সাপোর্ট নম্বর (WhatsApp):</label>
-                      <input
-                        type="text"
-                        value={settings?.supportWhatsapp ?? '+8801641404837'}
-                        onChange={(e) => setSettings(prev => ({ ...prev, supportWhatsapp: e.target.value }))}
-                        placeholder="+8801641404837"
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-mono"
-                      />
-                    </div>
-
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-slate-700 uppercase">টেলিগ্রাম চ্যানেল / গ্রুপ লিংক:</label>
                       <input

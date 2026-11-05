@@ -5,12 +5,12 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Coins, Play, RotateCcw, Zap, Info, Settings, Trophy, Star, X, Zap as TurboIcon, Volume2, VolumeX } from 'lucide-react';
+import { Coins, Play, RotateCcw, Zap, Info, Settings, Trophy, Star, X, Zap as TurboIcon, Volume2, VolumeX, Sparkles } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { SYMBOLS, ROWS, COLS, MULTIPLIERS, FREE_SPIN_MULTIPLIERS, SOUNDS } from './PokieSuperAceConstants';
 import { WebAudioManager } from './PokieSuperAceAudioManager';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { doc, updateDoc, increment } from 'firebase/firestore';
+import { doc, updateDoc, increment, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { UserData } from '../types';
 import { toBengaliNumber, formatBengaliCurrency } from '../utils';
 import { haptics } from '../utils/haptics';
@@ -520,6 +520,7 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
   const [spinCount, setSpinCount] = useState(0);
   const [isAutoPlayingFreeSpins, setIsAutoPlayingFreeSpins] = useState(false);
   const [isProcessing, setIsProcessingState] = useState(false);
+  const [winBreakdown, setWinBreakdown] = useState<{ name: string; consecutive: number; ways: number; win: number }[]>([]);
   const [totalSpins, setTotalSpins] = useState(() => {
     const saved = localStorage.getItem('super_ace_total_spins');
     return saved ? parseInt(saved, 10) : 0;
@@ -569,9 +570,19 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
   const handleCollectFreeSpinWin = useCallback(async () => {
     setIsProcessing(true);
     try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        balance: increment(totalFreeSpinWin)
-      });
+      if (totalFreeSpinWin > 0) {
+        await updateDoc(doc(db, 'users', user.uid), {
+          balance: increment(totalFreeSpinWin)
+        });
+        await addDoc(collection(db, 'bets'), {
+          uid: user.uid,
+          gameName: 'TK333 Super Ace (Free Game)',
+          amount: betRef.current,
+          profit: totalFreeSpinWin,
+          status: 'win',
+          createdAt: serverTimestamp()
+        });
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, 'users');
     }
@@ -607,7 +618,7 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
         randomSymbol = SCATTER_SYMBOL;
       } else {
         const isWild = Math.random() < wildProb;
-        if (isWild && colIndex !== undefined && colIndex >= 1) { // Wilds usually not on reel 1
+        if (isWild) {
           randomSymbol = WILD_SYMBOL;
         } else {
           // Standard weighted symbol distribution
@@ -655,6 +666,7 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
   const checkWins = useCallback((currentGrid: SymbolInstance[][], currentMultiplierIdx: number, isFreeSpin: boolean, currentBet: number) => {
     const winningPositions: { col: number; row: number }[] = [];
     const scatterPositions: { col: number; row: number }[] = [];
+    const breakdown: { name: string; consecutive: number; ways: number; win: number }[] = [];
     let totalWin = 0;
     let scatterCount = 0;
     let totalWays = 0;
@@ -671,19 +683,70 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       }
     }
 
+    const multList = isFreeSpin ? FREE_SPIN_MULTIPLIERS : MULTIPLIERS;
+    const multiplier = multList[Math.min(currentMultiplierIdx, multList.length - 1)];
+
+    // 1. Authoritative Pure Wild Sequence Evaluation (Reels 0, 1, 2... with Wilds)
+    let pureWildConsecutive = 0;
+    let pureWildWays = 1;
+    for (let c = 0; c < COLS; c++) {
+      let wildCount = 0;
+      for (let r = 0; r < ROWS; r++) {
+        const sym = currentGrid[c][r];
+        if (sym && sym.isWild && sym.isRevealed !== false) {
+          wildCount++;
+        }
+      }
+      if (wildCount > 0) {
+        pureWildConsecutive++;
+        pureWildWays *= wildCount;
+      } else {
+        break;
+      }
+    }
+
+    if (pureWildConsecutive >= 3) {
+      // 3 of kind: 0.3x, 4 of kind: 0.8x, 5 of kind: 2.5x base scale of top symbol
+      const payScale = pureWildConsecutive === 3 ? 0.3 : (pureWildConsecutive === 4 ? 0.8 : 2.5);
+      const pureWildBaseWin = (5.0 * payScale * pureWildWays * currentBet) / 10;
+      const pureWildLineWin = pureWildBaseWin * multiplier;
+      totalWin += pureWildLineWin;
+      totalWays += pureWildWays;
+      breakdown.push({
+        name: 'JOKER WILD',
+        consecutive: pureWildConsecutive,
+        ways: pureWildWays,
+        win: pureWildLineWin
+      });
+
+      for (let c = 0; c < pureWildConsecutive; c++) {
+        for (let r = 0; r < ROWS; r++) {
+          const sym = currentGrid[c][r];
+          if (sym && sym.isWild && !isWinningGrid[c][r]) {
+            isWinningGrid[c][r] = true;
+            winningPositions.push({ col: c, row: r });
+          }
+        }
+      }
+    }
+
+    // 2. Authoritative Regular Symbols with Wild Card Substitution
     SYMBOLS.forEach(symbol => {
       if (symbol.isScatter || symbol.isWild) return;
 
       let ways = 1;
       let consecutive = 0;
+      let actualSymbolCount = 0;
 
       for (let c = 0; c < COLS; c++) {
         let countOnReel = 0;
         for (let r = 0; r < ROWS; r++) {
           const sym = currentGrid[c][r];
-          // Explicitly exclude scatters from being part of a winning line
           if (sym && !sym.isScatter && (sym.symbolId === symbol.id || sym.isWild) && sym.isRevealed !== false) {
             countOnReel++;
+            if (sym.symbolId === symbol.id) {
+              actualSymbolCount++;
+            }
           }
         }
 
@@ -695,13 +758,20 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
         }
       }
 
-      if (consecutive >= 3) {
-        const multiplier = isFreeSpin ? FREE_SPIN_MULTIPLIERS[currentMultiplierIdx] : MULTIPLIERS[currentMultiplierIdx];
-        const payoutMultiplier = consecutive === 3 ? 1 : (consecutive === 4 ? 2 : 5);
-        
-        const baseWin = (symbol.value * ways * payoutMultiplier) * (currentBet / 10);
-        totalWin += baseWin * multiplier;
+      // Valid regular win: consecutive >= 3 and has at least one actual symbol instance
+      if (consecutive >= 3 && actualSymbolCount > 0) {
+        const payScale = consecutive === 3 ? 0.2 : (consecutive === 4 ? 0.5 : 1.0);
+        const lineBaseWin = (symbol.value * payScale * ways * currentBet) / 10;
+        const lineWin = lineBaseWin * multiplier;
+        totalWin += lineWin;
         totalWays += ways;
+
+        breakdown.push({
+          name: symbol.name,
+          consecutive,
+          ways,
+          win: lineWin
+        });
 
         for (let c = 0; c < consecutive; c++) {
           for (let r = 0; r < ROWS; r++) {
@@ -715,7 +785,7 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       }
     });
 
-    return { winningPositions, totalWin, scatterCount, scatterPositions, totalWays };
+    return { winningPositions, totalWin, scatterCount, scatterPositions, totalWays, breakdown };
   }, []);
 
   const triggerFreeSpins = useCallback(async (count: number, scatterPositions: { col: number; row: number }[]): Promise<boolean> => {
@@ -726,7 +796,7 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
     
     if (spins > 0) {
       if (isFreeSpinModeRef.current) {
-        // Re-trigger: Just add spins and show a small toast or sound
+        // Re-trigger: Just add spins and show a celebration sound
         setFreeSpins(prev => prev + spins);
         playSound(SOUNDS.BONUS, 0.6);
         return false;
@@ -741,11 +811,11 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       const gridEl = document.getElementById('slot-grid');
       if (gridEl) {
         gridEl.classList.add('bonus-trigger-pulse');
-        setTimeout(() => gridEl.classList.remove('bonus-trigger-pulse'), 2000);
+        setTimeout(() => gridEl.classList.remove('bonus-trigger-pulse'), 1500);
       }
       
-      // 2. Wait for the player to see the scatters clearly (3 seconds for more drama)
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // 2. Clear, highlight for player feedback
+      await new Promise(resolve => setTimeout(resolve, 1200));
       
       setIsScatterTriggering(false);
       // 3. Clear highlights and show the celebration modal
@@ -756,8 +826,8 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       setIsFreeSpinMode(true);
       
       confetti({
-        particleCount: 200,
-        spread: 90,
+        particleCount: 180,
+        spread: 80,
         origin: { y: 0.5 },
         colors: ['#FFD700', '#FFA500', '#FF4500']
       });
@@ -767,7 +837,7 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
   }, [playSound]);
 
   const handleCascade = useCallback(async (currentGrid: SymbolInstance[][], multiplierIdx: number, currentCombo: number, accumulatedWin: number = 0): Promise<void> => {
-    if (currentCombo >= 10) { // Increased limit for safety
+    if (currentCombo >= 10) {
       setIsProcessing(false);
       return;
     }
@@ -781,19 +851,13 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       const isFS = isFreeSpinModeRef.current;
       const currentBet = betRef.current;
       
-      let { winningPositions, totalWin, scatterCount, scatterPositions, totalWays: ways } = checkWins(currentGrid, multiplierIdx, isFS, currentBet);
-      
-      // Payout Cap Logic: Ensure no single spin exceeds 500x bet
-      const maxSpinWin = currentBet * 500;
-      if (accumulatedWin + totalWin > maxSpinWin) {
-        totalWin = Math.max(0, maxSpinWin - accumulatedWin);
-      }
-
+      let { winningPositions, totalWin, scatterCount, scatterPositions, totalWays: ways, breakdown } = checkWins(currentGrid, multiplierIdx, isFS, currentBet);
       const newAccumulatedWin = accumulatedWin + totalWin;
 
       if (winningPositions.length > 0) {
         setWinningPositions(winningPositions);
         setTotalWays(ways);
+        setWinBreakdown(breakdown || []);
         playSound(SOUNDS.BURST, 0.4);
         if (totalWin >= currentBet * 5) {
           haptics.win();
@@ -801,8 +865,8 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
           haptics.light();
         }
         
-        // 1. Wait for the burst animation to complete (400ms)
-        await new Promise(resolve => setTimeout(resolve, turbo ? 250 : 450));
+        // 1. Snappy burst animation
+        await new Promise(resolve => setTimeout(resolve, turbo ? 140 : 240));
         
         setWinAmount(prev => prev + totalWin);
         if (isFS) {
@@ -812,6 +876,15 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
             await updateDoc(doc(db, 'users', user.uid), {
               balance: increment(totalWin)
             });
+            // Record bet record on winning cascades
+            addDoc(collection(db, 'bets'), {
+              uid: user.uid,
+              gameName: 'TK333 Super Ace',
+              amount: currentBet,
+              profit: totalWin - currentBet,
+              status: 'win',
+              createdAt: serverTimestamp()
+            }).catch(() => {});
           } catch (err) {
             handleFirestoreError(err, OperationType.UPDATE, 'users');
           }
@@ -828,19 +901,14 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
         
         // 2. Prepare the new grid (remove winning symbols)
         const newGrid = currentGrid.map(col => col ? [...col] : []);
-        const bigJokerReels: number[] = [];
+        const extraWildPositions: { col: number; row: number }[] = [];
 
         winningPositions.forEach(({ col, row }) => {
           if (newGrid[col] && newGrid[col][row]) {
             const sym = newGrid[col][row];
             if (sym && sym.isGolden) {
-              // Chance to become Big Joker (replaces whole reel) or Small Joker (just one wild)
-              const isBigJoker = Math.random() > 0.7; // 30% chance for Big Joker
-              
-              if (isBigJoker) {
-                bigJokerReels.push(col);
-              }
-
+              // Convert Golden Symbol to Joker Wild
+              const isBigJoker = Math.random() < 0.25;
               newGrid[col][row] = {
                 id: Math.random().toString(36).substr(2, 9),
                 symbolId: 10,
@@ -850,43 +918,48 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
                 url: SYMBOLS.find(s => s.isWild)!.url,
                 isRevealed: true
               };
+
+              // Big Joker: converts at most ONE adjacent card on the same column to Wild (prevents 256-way exponential runaway)
+              if (isBigJoker) {
+                const adjRow = row > 0 ? row - 1 : (row < ROWS - 1 ? row + 1 : -1);
+                if (adjRow >= 0) {
+                  extraWildPositions.push({ col, row: adjRow });
+                }
+              }
             } else {
               newGrid[col][row] = null as any;
             }
           }
         });
 
-        // Apply Big Joker effect: Replace all non-scatter symbols on the reel with Wilds
-        bigJokerReels.forEach(colIndex => {
-          for (let r = 0; r < ROWS; r++) {
-            const sym = newGrid[colIndex][r];
-            if (sym && !sym.isScatter && !sym.isWild) {
-              newGrid[colIndex][r] = {
-                id: Math.random().toString(36).substr(2, 9),
-                symbolId: 10,
-                isWild: true,
-                isGolden: false,
-                isScatter: false,
-                url: SYMBOLS.find(s => s.isWild)!.url,
-                isRevealed: true
-              };
-            }
+        // Apply Big Joker adjacent wild
+        extraWildPositions.forEach(({ col, row }) => {
+          if (newGrid[col] && newGrid[col][row] && !newGrid[col][row].isScatter && !newGrid[col][row].isWild) {
+            newGrid[col][row] = {
+              id: Math.random().toString(36).substr(2, 9),
+              symbolId: 10,
+              isWild: true,
+              isGolden: false,
+              isScatter: false,
+              url: SYMBOLS.find(s => s.isWild)!.url,
+              isRevealed: true
+            };
           }
         });
 
-        // 3. Clear winning positions and update grid simultaneously to trigger exit animation
+        // 3. Clear winning positions and update grid simultaneously
         setWinningPositions([]);
         setGrid(newGrid.map(col => [...col]));
         
-        // 4. Wait for exit animation and symbols to settle
-        await new Promise(resolve => setTimeout(resolve, turbo ? 150 : 300));
+        // 4. Quick settle wait
+        await new Promise(resolve => setTimeout(resolve, turbo ? 100 : 180));
 
         let totalScattersOnGrid = 0;
         newGrid.forEach(col => col && col.forEach(sym => {
           if (sym && sym.isScatter) totalScattersOnGrid++;
         }));
 
-        // Second update: filter nulls and add new symbols (triggers layout slide)
+        // Fill empty positions with cascading new symbols
         for (let c = 0; c < COLS; c++) {
           if (!newGrid[c]) newGrid[c] = [];
           const column = newGrid[c].filter(s => s !== null);
@@ -900,19 +973,20 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
 
         setGrid(newGrid.map(col => [...col]));
 
-        const nextMultiplierIdx = Math.min(multiplierIdx + 1, MULTIPLIERS.length - 1);
+        const multList = isFS ? FREE_SPIN_MULTIPLIERS : MULTIPLIERS;
+        const nextMultiplierIdx = Math.min(multiplierIdx + 1, multList.length - 1);
         setMultiplierIndex(nextMultiplierIdx);
         
-        await new Promise(resolve => setTimeout(resolve, turbo ? 300 : 600));
+        await new Promise(resolve => setTimeout(resolve, turbo ? 140 : 250));
         setTotalWays(0);
         
-        // Await recursive call to ensure the entire sequence is finished before resolving
+        // Await next cascade step
         return await handleCascade(newGrid, nextMultiplierIdx, currentCombo + 1, newAccumulatedWin);
       } else {
         setCombo(0);
         setMultiplierIndex(0);
         
-        // Check for scatters at the end of ALL cascades
+        // Check for scatters at the end of cascades
         const finalCheck = checkWins(currentGrid, 0, isFS, currentBet);
         if (finalCheck.scatterCount >= 3) {
           setTotalWays(0);
@@ -933,7 +1007,7 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
               spread: 70,
               origin: { y: 0.6 }
             });
-            await new Promise(resolve => setTimeout(resolve, 3000));
+            await new Promise(resolve => setTimeout(resolve, 2000));
             setShowBigWin(false);
           }
         }
@@ -945,7 +1019,7 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       setIsProcessing(false);
       setIsSpinning(false);
     }
-  }, [turbo, playSound, getRandomSymbol, checkWins, triggerFreeSpins]);
+  }, [turbo, playSound, getRandomSymbol, checkWins, triggerFreeSpins, user.uid]);
 
   // Rigged Win Generator for Retention
   const generateRiggedGrid = useCallback((type: 'small' | 'scatter' | 'big_fs', currentScatters: number) => {
@@ -1029,6 +1103,7 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
     setCombo(0);
     setTotalWays(0);
     setWinningPositions([]);
+    setWinBreakdown([]);
     setIsScatterTriggering(false);
     setShowBigWin(false);
     setShowFreeSpinCelebration(null);
@@ -1103,12 +1178,12 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       setGrid(newGrid);
       setTotalSpins(prev => prev + 1);
 
-      await new Promise(resolve => setTimeout(resolve, turbo ? 200 : 400));
+      await new Promise(resolve => setTimeout(resolve, turbo ? 160 : 320));
       setIsSpinning(false);
 
       const hasUnrevealedMystery = newGrid.some(col => col.some(sym => sym.isMystery && !sym.isRevealed));
       if (hasUnrevealedMystery) {
-        await new Promise(resolve => setTimeout(resolve, 400));
+        await new Promise(resolve => setTimeout(resolve, 250));
         const revealedGrid = newGrid.map((col, colIdx) => col.map(sym => {
           if (sym.isMystery && !sym.isRevealed) {
             return { 
@@ -1122,18 +1197,18 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
         setGrid(revealedGrid);
         
         confetti({
-          particleCount: 60,
-          spread: 80,
+          particleCount: 50,
+          spread: 70,
           origin: { y: 0.6 },
           colors: ['#FFD700', '#FFFFFF', '#FFA500']
         });
         
-        await new Promise(resolve => setTimeout(resolve, 800));
+        await new Promise(resolve => setTimeout(resolve, 400));
         newGrid = revealedGrid.map(col => col.map(sym => ({ ...sym, isMysteryWin: false })));
         setGrid(newGrid);
       }
 
-      await new Promise(resolve => setTimeout(resolve, turbo ? 700 : 1400));
+      await new Promise(resolve => setTimeout(resolve, turbo ? 80 : 160));
       await handleCascade(newGrid, 0, 0);
 
     } catch (error) {
@@ -1360,29 +1435,45 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
           <p className="text-center text-lg font-bold uppercase tracking-[1em]">Deluxe</p>
         </div>
 
-        {/* Upper Info Section */}
-        <div className="w-full flex flex-col items-center gap-2 sm:gap-3">
-          <div className="flex items-center gap-4 bg-black/60 px-5 py-1 rounded-full border border-yellow-500/30 shadow-[0_0_20px_rgba(0,0,0,0.5)]">
-            <span className="text-yellow-500 font-black italic uppercase text-[10px] tracking-tighter">FREE SPIN</span>
-            <span className="text-2xl font-black text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.8)] tabular-nums">
-              {freeSpins || 0}
+        {/* Upper Header & Free Spin HUD */}
+        <div className="w-full flex justify-between items-center px-1 mb-1.5 z-20">
+          <div className="flex items-center gap-2 bg-gradient-to-r from-amber-500/20 to-black/60 px-3 py-1 rounded-full border border-yellow-500/40 shadow-sm">
+            <span className="text-yellow-400 font-black italic uppercase text-[10px] tracking-wider">
+              {isFreeSpinMode ? 'FREE GAME' : 'BASE GAME'}
             </span>
           </div>
 
-          {/* Multiplier Bar */}
+          <AnimatePresence>
+            {isFreeSpinMode && (
+              <motion.div 
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.8, opacity: 0 }}
+                className="flex items-center gap-2 bg-red-950/80 px-3.5 py-1 rounded-full border border-red-500/60 shadow-[0_0_15px_rgba(239,68,68,0.5)]"
+              >
+                <span className="text-yellow-400 font-black italic uppercase text-[10px] tracking-wider">REMAINING</span>
+                <span className="text-xl font-black text-white tabular-nums drop-shadow-[0_0_8px_#ef4444]">
+                  {freeSpins}
+                </span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Multiplier Ribbon Docked Above Reels */}
+        <div className="w-full flex flex-col items-center mb-1.5 z-20">
           <div className="multiplier-bar">
             {(isFreeSpinMode ? FREE_SPIN_MULTIPLIERS : MULTIPLIERS).map((m, i) => (
               <motion.div 
                 key={i}
                 initial={false}
                 animate={{
-                  scale: multiplierIndex === i ? 1.15 : 1,
-                  color: multiplierIndex === i ? "#ffd700" : "#8b5e3c",
-                  textShadow: multiplierIndex === i ? "0 0 10px #ffd700, 0 0 20px #ff8c00" : "1px 1px 2px rgba(0,0,0,0.8)"
+                  scale: multiplierIndex === i ? 1.08 : 1,
+                  color: multiplierIndex === i ? "#1a0900" : "#a37848",
                 }}
                 className={`multiplier-item ${multiplierIndex === i ? 'active' : ''}`}
               >
-                x{m}
+                {m}X
               </motion.div>
             ))}
           </div>
@@ -1425,6 +1516,30 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
             ))}
           </div>
         </div>
+
+        {/* Winning Combination Breakdown HUD Overlay */}
+        <AnimatePresence>
+          {winBreakdown.length > 0 && !isSpinning && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -5 }}
+              className="w-full flex items-center justify-center gap-1.5 flex-wrap px-2 my-1 z-30"
+            >
+              {winBreakdown.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-yellow-950/90 border border-yellow-500/50 text-[10px] font-black text-yellow-300 shadow-md backdrop-blur-sm"
+                >
+                  <Sparkles size={11} className="text-yellow-400" />
+                  <span>{item.name} {item.consecutive}x</span>
+                  <span className="text-yellow-100/70">({item.ways} Ways)</span>
+                  <span className="text-emerald-400 font-mono">+{CURRENCY}{item.win.toFixed(2)}</span>
+                </div>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Win Display */}
         <div className="mt-2 text-center h-12 flex flex-col items-center justify-center relative">

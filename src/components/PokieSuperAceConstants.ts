@@ -8,11 +8,11 @@ export const SYMBOLS = [
   { id: 7, url: "https://clashofslots.com/wp-content/uploads/2023/09/super-ace-07.png", value: 1.0, name: '8' },
   { id: 8, url: "https://clashofslots.com/wp-content/uploads/2023/09/super-ace-08.png", value: 0.5, name: '7' },
   { id: 9, url: "https://clashofslots.com/wp-content/uploads/2023/09/super-ace-09.png", value: 5.0, name: 'Ace' },
-  { id: 10, url: "https://clashofslots.com/wp-content/uploads/2023/09/super-ace-10.png", value: 0, name: 'Wild', isWild: true },
+  { id: 10, url: "https://clashofslots.com/wp-content/uploads/2023/09/super-ace-10.png", value: 5.0, name: 'Wild', isWild: true },
 ];
 
-export const MULTIPLIERS = [1, 2, 3, 4, 5];
-export const FREE_SPIN_MULTIPLIERS = [2, 4, 6, 8, 10];
+export const MULTIPLIERS = [1, 2, 3, 5];
+export const FREE_SPIN_MULTIPLIERS = [2, 4, 6, 10];
 
 export const ROWS = 4;
 export const COLS = 5;

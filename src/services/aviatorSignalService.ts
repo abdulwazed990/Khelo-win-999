@@ -352,7 +352,7 @@ export async function getLatestSignalAndRecentRounds(): Promise<{
 
 // Function called by Aviator game to publish authoritative live synchronized state
 export async function broadcastLiveGameRound(payload: {
-  roundId: string;
+  roundId?: string;
   status: SignalConnectionStatus;
   currentMultiplier: number;
   finalMultiplier?: number;
@@ -367,9 +367,14 @@ export async function broadcastLiveGameRound(payload: {
   crashTime?: string;
 }): Promise<void> {
   try {
+    const validRoundId = (payload.roundId && typeof payload.roundId === 'string' && payload.roundId.trim().length > 0)
+      ? payload.roundId.trim()
+      : generateRoundId();
+
     const currentDocRef = doc(db, ROUNDS_COLLECTION, 'CURRENT_LIVE_ROUND');
     const updatePayload: any = {
       ...payload,
+      roundId: validRoundId,
       id: 'CURRENT_LIVE_ROUND',
       gameId: DEFAULT_GAME_ID,
       serverTimestamp: payload.serverTimestamp || Date.now(),
@@ -380,16 +385,18 @@ export async function broadcastLiveGameRound(payload: {
       updatePayload.startTime = new Date().toISOString();
     }
     if (payload.status === 'ROUND_FINISHED' || payload.status === 'CRASHED') {
-      updatePayload.crashTime = new Date().toISOString();
+      const crashIso = payload.crashTime || new Date().toISOString();
+      updatePayload.crashTime = crashIso;
       
-      // Archive completed round to history collection
-      const archiveRef = doc(db, ROUNDS_COLLECTION, payload.roundId);
+      // Archive completed round to history collection with guaranteed valid 2-segment path
+      const archiveRef = doc(db, ROUNDS_COLLECTION, validRoundId);
       await setDoc(archiveRef, cleanFirestoreObject({
         ...payload,
-        id: payload.roundId,
+        id: validRoundId,
+        roundId: validRoundId,
         gameId: DEFAULT_GAME_ID,
-        createdAt: new Date().toISOString(),
-        crashTime: new Date().toISOString(),
+        createdAt: payload.startTime || new Date().toISOString(),
+        crashTime: crashIso,
         serverTimestamp: Date.now()
       }), { merge: true });
     }

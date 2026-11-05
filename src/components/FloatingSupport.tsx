@@ -15,7 +15,6 @@ export default function FloatingSupport({ settings }: FloatingSupportProps) {
 
   const telegramUrl = settings?.telegramUrl || 'https://t.me/TK333_Official';
   const liveChatUrl = settings?.liveChatUrl || 'https://tawk.to';
-  const whatsappUrl = settings?.whatsappUrl || 'https://wa.me/8801700000000';
 
   return (
     <div className="fixed bottom-20 right-3.5 z-40 flex flex-col items-end gap-2">
@@ -38,20 +37,6 @@ export default function FloatingSupport({ settings }: FloatingSupportProps) {
               <span>{lang === 'bn' ? 'অফিসিয়াল টেলিগ্রাম' : 'Telegram Channel'}</span>
               <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
                 <Send size={13} className="text-white" />
-              </div>
-            </a>
-
-            {/* WhatsApp */}
-            <a
-              href={whatsappUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => haptics.selection()}
-              className="flex items-center gap-2 px-3.5 py-2 bg-[#25D366] text-white text-xs font-bold rounded-full shadow-md hover:scale-105 active:scale-95 transition-all"
-            >
-              <span>{lang === 'bn' ? 'হোয়াটসঅ্যাপ সাপোর্ট' : 'WhatsApp Support'}</span>
-              <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
-                <PhoneCall size={13} className="text-white" />
               </div>
             </a>
 

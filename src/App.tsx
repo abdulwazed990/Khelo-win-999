@@ -153,6 +153,11 @@ export default function App() {
         searchParams.get('game') === 'coinflip'
       ) {
         setCurrentPage('coinflip');
+      } else if (!path || path === '' || path === '/') {
+        // Default root visits ALWAYS land on home casino lobby
+        if (hash !== 'signal' && !hash.startsWith('signal') && searchParams.get('page') !== 'signal') {
+          setCurrentPage('home');
+        }
       }
     };
 
@@ -339,6 +344,7 @@ export default function App() {
         <AviatorSignalApp
           onOpenAviatorGame={() => handleNavigate('aviator-jet')}
           onOpenCMS={() => handleNavigate('admin')}
+          onBackToHome={() => handleNavigate('home')}
         />
       </div>
     );

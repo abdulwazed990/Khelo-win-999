@@ -55,7 +55,54 @@ export async function saveSiteSettings(
     // 1. Atomic Local-First & Firestore Write
     await safeSetDoc(settingsDocRef, mergedData, { merge: true });
 
-    // 2. Audit Trail
+    // Store in all persistent local caches immediately
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem('tk333_cached_site_settings', JSON.stringify(mergedData));
+        localStorage.setItem('tk333_doc_settings_site', JSON.stringify(mergedData));
+      } catch (lsE) {}
+    }
+
+    // 2. Synchronize bKash and Nagad in payment_methods collection if numbers were updated
+    try {
+      if (cleanUpdates.depositBkashNumbers || cleanUpdates.depositBkashNumber) {
+        const bkashList = Array.isArray(mergedData.depositBkashNumbers) 
+          ? mergedData.depositBkashNumbers.filter(n => n && n.trim().length > 0)
+          : (mergedData.depositBkashNumber ? [mergedData.depositBkashNumber] : []);
+        const primaryBkash = bkashList[0] || mergedData.depositBkashNumber || '';
+        
+        await safeSetDoc(doc(db, 'payment_methods', 'pm_bkash'), {
+          methodId: 'bkash',
+          name: 'bKash',
+          nameBn: 'বিকাশ',
+          accountNumber: primaryBkash,
+          accountNumbers: bkashList,
+          status: 'active',
+          updatedAt: nowIso
+        }, { merge: true });
+      }
+
+      if (cleanUpdates.depositNagadNumbers || cleanUpdates.depositNagadNumber) {
+        const nagadList = Array.isArray(mergedData.depositNagadNumbers) 
+          ? mergedData.depositNagadNumbers.filter(n => n && n.trim().length > 0)
+          : (mergedData.depositNagadNumber ? [mergedData.depositNagadNumber] : []);
+        const primaryNagad = nagadList[0] || mergedData.depositNagadNumber || '';
+
+        await safeSetDoc(doc(db, 'payment_methods', 'pm_nagad'), {
+          methodId: 'nagad',
+          name: 'Nagad',
+          nameBn: 'নগদ',
+          accountNumber: primaryNagad,
+          accountNumbers: nagadList,
+          status: 'active',
+          updatedAt: nowIso
+        }, { merge: true });
+      }
+    } catch (pmErr) {
+      console.warn('Payment methods sync warning:', pmErr);
+    }
+
+    // 3. Audit Trail
     const changedKeys = Object.keys(cleanUpdates);
     const details = `Admin ${adminEmail} updated site settings (Version ${nextVersion}). Fields modified: ${changedKeys.join(', ')}`;
     
@@ -74,7 +121,7 @@ export async function saveSiteSettings(
       timestamp: nowIso
     });
 
-    // 3. Synchronize server backend if global win probability changed
+    // 4. Synchronize server backend if global win probability changed
     if (cleanUpdates.globalWinProbability !== undefined) {
       try {
         await fetch('/api/settings/game-probability', {

@@ -807,16 +807,6 @@ export default function Home({
       <footer className="mt-4 pt-4 border-t border-slate-200/80 text-center space-y-3 pb-4">
         {/* Support Channels */}
         <div className="flex flex-wrap items-center justify-center gap-2 text-xs">
-          {settings?.supportWhatsapp && (
-            <a
-              href={`https://wa.me/${settings.supportWhatsapp.replace(/[^0-9]/g, '')}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl border border-emerald-200 font-bold font-chakra flex items-center gap-1.5 transition-all text-[11px]"
-            >
-              WhatsApp Support
-            </a>
-          )}
           {settings?.telegramChannel && (
             <a
               href={settings.telegramChannel.startsWith('http') ? settings.telegramChannel : `https://t.me/${settings.telegramChannel.replace('@', '')}`}
@@ -825,6 +815,16 @@ export default function Home({
               className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl border border-blue-200 font-bold font-chakra flex items-center gap-1.5 transition-all text-[11px]"
             >
               Telegram Official
+            </a>
+          )}
+          {settings?.liveChatUrl && (
+            <a
+              href={settings.liveChatUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl border border-indigo-200 font-bold font-chakra flex items-center gap-1.5 transition-all text-[11px]"
+            >
+              24/7 Live Support
             </a>
           )}
         </div>
@@ -857,73 +857,89 @@ export default function Home({
       {/* 10. Interactive Slot Simulator Modal for Unrouted Games */}
       <AnimatePresence>
         {playingSimGame && (
-          <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[90] flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md">
             <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white border border-slate-200 rounded-3xl p-5 w-full max-w-sm shadow-2xl space-y-4 text-slate-900"
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-[#0b1120] border-2 border-amber-500/60 rounded-3xl p-4 sm:p-6 w-full max-w-sm shadow-[0_0_50px_rgba(245,158,11,0.3)] space-y-4 text-white relative overflow-hidden"
             >
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                    <Gamepad2 size={18} />
+              {/* Top Golden Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-400 text-black flex items-center justify-center shadow">
+                    <Gamepad2 size={20} />
                   </div>
                   <div>
-                    <h3 className="font-chakra font-black text-sm text-slate-900">
+                    <h3 className="font-chakra font-black text-sm text-white uppercase tracking-tight">
                       {playingSimGame.title || playingSimGame.name}
                     </h3>
-                    <span className="text-[10px] text-slate-400 uppercase font-mono">{playingGameProvider(playingSimGame)}</span>
+                    <span className="text-[10px] text-amber-400 font-mono uppercase font-bold tracking-wider">
+                      {playingGameProvider(playingSimGame)} • 98.6% RTP
+                    </span>
                   </div>
                 </div>
                 <button
                   onClick={() => setPlayingSimGame(null)}
-                  className="p-1 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100"
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
                 >
                   <XCircle size={20} />
                 </button>
               </div>
 
-              {/* Reel Screen Simulation */}
-              <div className="w-full aspect-[16/10] bg-slate-900 rounded-2xl border-2 border-amber-400 p-3 flex flex-col justify-between items-center text-white relative overflow-hidden shadow-inner">
-                <div className="text-[10px] font-chakra text-amber-400 tracking-widest uppercase">
-                  {playingSimGame.title} • 98.6% RTP
+              {/* Luxury Casino 3-Reel Screen */}
+              <div className="w-full bg-[#050811] rounded-2xl border-2 border-amber-500/40 p-3.5 flex flex-col justify-between items-center text-white relative overflow-hidden shadow-inner space-y-3">
+                <div className="w-full flex items-center justify-between text-[10px] font-mono font-bold text-slate-400 px-1">
+                  <span className="text-amber-400">CLASSIC 3-REEL</span>
+                  <span>PAYOUT 10X</span>
                 </div>
 
-                <div className="flex items-center justify-center gap-3 my-auto">
-                  <div className={`w-16 h-20 bg-slate-800 rounded-xl flex items-center justify-center text-3xl font-black border border-slate-700 shadow ${simPlaying ? 'animate-bounce' : ''}`}>
-                    {simPlaying ? '🎰' : (simResult?.won ? '7️⃣' : '👑')}
-                  </div>
-                  <div className={`w-16 h-20 bg-slate-800 rounded-xl flex items-center justify-center text-3xl font-black border border-slate-700 shadow ${simPlaying ? 'animate-bounce' : ''}`}>
-                    {simPlaying ? '💎' : (simResult?.won ? '7️⃣' : '💎')}
-                  </div>
-                  <div className={`w-16 h-20 bg-slate-800 rounded-xl flex items-center justify-center text-3xl font-black border border-slate-700 shadow ${simPlaying ? 'animate-bounce' : ''}`}>
-                    {simPlaying ? '⭐' : (simResult?.won ? '7️⃣' : '🍒')}
-                  </div>
+                <div className="grid grid-cols-3 gap-2 w-full py-1">
+                  {[
+                    simPlaying ? '🎰' : (simResult?.won ? '7️⃣' : '👑'),
+                    simPlaying ? '💎' : (simResult?.won ? '7️⃣' : '💎'),
+                    simPlaying ? '⭐' : (simResult?.won ? '7️⃣' : '🍒')
+                  ].map((sym, i) => (
+                    <div
+                      key={i}
+                      className={`h-24 bg-gradient-to-b from-slate-900 to-slate-950 rounded-xl flex items-center justify-center text-4xl border border-amber-500/30 shadow-[inset_0_0_15px_rgba(0,0,0,0.8)] transition-all ${
+                        simPlaying ? 'animate-bounce blur-[0.5px]' : simResult?.won ? 'ring-2 ring-emerald-400 scale-102' : ''
+                      }`}
+                    >
+                      {sym}
+                    </div>
+                  ))}
                 </div>
 
-                {simResult && (
-                  <div className={`text-xs font-black font-chakra ${simResult.won ? 'text-emerald-400 animate-pulse' : 'text-rose-400'}`}>
-                    {simResult.won ? `🎉 জয়াভিমুখী! ৳${simResult.winAmount} জয়!` : '😢 পরবর্তীতে আবার চেষ্টা করুন!'}
+                {simResult ? (
+                  <div className={`text-xs font-chakra font-black text-center ${simResult.won ? 'text-emerald-400 animate-pulse' : 'text-rose-400'}`}>
+                    {simResult.won ? `🎉 JACKPOT! ৳${simResult.winAmount} WIN!` : '😢 TRY NEXT SPIN!'}
+                  </div>
+                ) : (
+                  <div className="text-[11px] font-mono text-slate-400 text-center">
+                    Match 3 symbols for massive payout
                   </div>
                 )}
               </div>
 
               {/* Bet Controls */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-500 font-bold">{lang === 'bn' ? 'বাজির পরিমাণ:' : 'Bet Amount:'}</span>
-                  <span className="font-rajdhani font-black text-emerald-600 text-sm">৳{simBetAmount}</span>
+                <div className="flex items-center justify-between text-xs font-chakra font-black text-slate-300">
+                  <span>{lang === 'bn' ? 'বাজির পরিমাণ:' : 'BET AMOUNT:'}</span>
+                  <span className="font-rajdhani font-black text-emerald-400 text-base">৳{simBetAmount}</span>
                 </div>
                 <div className="grid grid-cols-4 gap-1.5">
                   {['20', '50', '100', '500'].map((amt) => (
                     <button
                       key={amt}
-                      onClick={() => setSimBetAmount(amt)}
-                      className={`py-1 rounded-xl text-xs font-rajdhani font-black border ${
+                      onClick={() => {
+                        haptics.selection();
+                        setSimBetAmount(amt);
+                      }}
+                      className={`py-1.5 rounded-xl text-xs font-rajdhani font-black border transition-all ${
                         simBetAmount === amt
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-slate-100 text-slate-700 border-slate-200'
+                          ? 'bg-amber-500 text-black border-amber-300 shadow-[0_0_10px_#fbbf24]'
+                          : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-700'
                       }`}
                     >
                       ৳{amt}
@@ -935,10 +951,10 @@ export default function Home({
               <button
                 onClick={handleSimSpin}
                 disabled={simPlaying}
-                className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-chakra font-black text-xs rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+                className="w-full py-4 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-400 hover:to-yellow-300 text-black font-chakra font-black text-sm uppercase tracking-wider rounded-2xl shadow-[0_0_25px_rgba(245,158,11,0.4)] active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
                 {simPlaying ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin"></div>
                 ) : (
                   <span>{lang === 'bn' ? 'স্পিন করুন (SPIN)' : 'SPIN NOW'}</span>
                 )}

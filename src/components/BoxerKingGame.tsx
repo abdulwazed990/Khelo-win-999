@@ -8,15 +8,17 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Flame, 
   Info, 
-  Volume2,
+  Volume2, 
   VolumeX, 
   Zap, 
   RotateCcw, 
-  ChevronRight, 
-  ChevronLeft, 
+  ChevronUp, 
+  ArrowLeft,
   Trophy,
-  ChevronUp,
-  ArrowLeft
+  Crown,
+  Sparkles,
+  Award,
+  X
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -24,9 +26,10 @@ import confetti from 'canvas-confetti';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { doc, updateDoc, increment, addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { UserData } from '../types';
-import { toBengaliNumber, formatBengaliCurrency } from '../utils';
+import { toBengaliNumber } from '../utils';
 import { haptics } from '../utils/haptics';
 import { evaluateServerWinRoll } from '../services/gameProbabilityService';
+import { formatBDT } from '../config/currency';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -44,21 +47,28 @@ interface SymbolType {
 }
 
 const SYMBOLS: SymbolType[] = [
-  { id: 'king_card', name: 'KING', img: 'https://allslotsonline.casino/en/images/jili-games/boxing-king/symbols/icon-1071645790.webp', value: 50, isScatter: true },
-  { id: 'glove_card', name: 'GLOVE', img: 'https://allslotsonline.casino/en/images/jili-games/boxing-king/symbols/icon-1159747390.webp', value: 30, isScatter: true },
-  { id: 'strike', name: 'STRIKE', img: 'https://clashofslots.com/wp-content/uploads/2023/09/boxing-king-04.png', value: 15 },
-  { id: 'wild', name: 'WILD', img: 'https://clashofslots.com/wp-content/uploads/2023/09/boxing-king-05.png', value: 0, isWild: true },
-  { id: 'bell', name: 'BELL', img: 'https://clashofslots.com/wp-content/uploads/2023/09/boxing-king-07.png', value: 10 },
-  { id: 'q', name: 'Q', img: 'https://clashofslots.com/wp-content/uploads/2023/09/boxing-king-11.png', value: 5 },
-  { id: 'j', name: 'J', img: 'https://clashofslots.com/wp-content/uploads/2023/09/boxing-king-12.png', value: 2 },
+  { id: 'king_card', name: 'BOXER KING', img: 'https://allslotsonline.casino/en/images/jili-games/boxing-king/symbols/icon-1071645790.webp', value: 50 },
+  { id: 'wild', name: 'CHAMP WILD', img: 'https://clashofslots.com/wp-content/uploads/2023/09/boxing-king-05.png', value: 50, isWild: true },
+  { id: 'glove_card', name: 'GLOVE SCATTER', img: 'https://allslotsonline.casino/en/images/jili-games/boxing-king/symbols/icon-1159747390.webp', value: 30, isScatter: true },
+  { id: 'strike', name: 'KO STRIKE', img: 'https://clashofslots.com/wp-content/uploads/2023/09/boxing-king-04.png', value: 20 },
+  { id: 'bell', name: 'ROUND BELL', img: 'https://clashofslots.com/wp-content/uploads/2023/09/boxing-king-07.png', value: 12 },
+  { id: 'q', name: 'QUEEN', img: 'https://clashofslots.com/wp-content/uploads/2023/09/boxing-king-11.png', value: 6 },
+  { id: 'j', name: 'JACK', img: 'https://clashofslots.com/wp-content/uploads/2023/09/boxing-king-12.png', value: 4 },
+];
+
+const PAYLINES = [
+  { id: 1, name: 'Center Row', cells: [[0,1], [1,1], [2,1], [3,1], [4,1]] },
+  { id: 2, name: 'Top Row', cells: [[0,0], [1,0], [2,0], [3,0], [4,0]] },
+  { id: 3, name: 'Bottom Row', cells: [[0,2], [1,2], [2,2], [3,2], [4,2]] },
+  { id: 4, name: 'V-Shape', cells: [[0,0], [1,1], [2,2], [3,1], [4,0]] },
+  { id: 5, name: 'Inverted-V', cells: [[0,2], [1,1], [2,0], [3,1], [4,2]] }
 ];
 
 const BET_VALUES = [10, 20, 50, 100, 200, 500, 1000, 2000];
 const REEL_COUNT = 5;
 const ROW_COUNT = 3;
 
-// --- Components ---
-
+// --- Sound Effects Manager ---
 const playSound = (type: 'spin' | 'win' | 'bigWin' | 'punch' | 'pop', enabled: boolean) => {
   if (!enabled) return;
   const sounds = {
@@ -69,7 +79,7 @@ const playSound = (type: 'spin' | 'win' | 'bigWin' | 'punch' | 'pop', enabled: b
     pop: 'https://assets.mixkit.co/active_storage/sfx/2011/2011-preview.mp3'
   };
   const audio = new Audio(sounds[type]);
-  audio.volume = 0.3;
+  audio.volume = 0.35;
   audio.play().catch(() => {}); 
 };
 
@@ -94,9 +104,8 @@ const Reel = ({
   const [offset, setOffset] = useState(0);
   const [displaySymbols, setDisplaySymbols] = useState<SymbolType[]>([]);
   const animationRef = useRef<any>(null);
-  const symbolHeight = 64; // h-16 = 64px
+  const symbolHeight = 64;
   
-  // Initialize with random symbols
   useEffect(() => {
     const initial = Array(ROW_COUNT).fill(null).map(() => SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)]);
     setDisplaySymbols(initial);
@@ -104,12 +113,7 @@ const Reel = ({
 
   useEffect(() => {
     if (isSpinning) {
-      // Start spinning (Top to Bottom)
       const spinSpeed = isTurbo ? 50 : 35;
-      const staggerDelay = colIndex * (isTurbo ? 80 : 150);
-      const minSpinTime = (isTurbo ? 400 : 1000) + staggerDelay;
-
-      // Create a very long list for seamless infinite spinning
       const poolSize = 30;
       const pool = Array(poolSize).fill(null).map(() => SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)]);
       setDisplaySymbols(pool);
@@ -130,26 +134,26 @@ const Reel = ({
 
       animationRef.current = requestAnimationFrame(animateSpin);
 
+      // Simultaneous Reel Stop: all reels stop at the exact same coordinated timestamp
       const stopTimer = setTimeout(() => {
         cancelAnimationFrame(animationRef.current);
         
-        const paddingCount = 15;
+        const paddingCount = 12;
         const padding = Array(paddingCount).fill(null).map(() => SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)]);
         const finalStrip = [...targetSymbols, ...padding];
         setDisplaySymbols(finalStrip);
         
         const initialStopOffset = -(paddingCount * symbolHeight);
-        const overshoot = symbolHeight * 0.3;
+        const overshoot = symbolHeight * 0.25;
         const startPos = initialStopOffset - overshoot;
         
         let start: number | null = null;
-        const duration = isTurbo ? 350 : 700;
+        const duration = isTurbo ? 260 : 480;
 
         const animateStop = (timestamp: number) => {
           if (!start) start = timestamp;
           const progress = Math.min((timestamp - start) / duration, 1);
-          
-          const easeOut = 1 - Math.pow(1 - progress, 4);
+          const easeOut = 1 - Math.pow(1 - progress, 3);
           const currentOffset = startPos * (1 - easeOut);
           
           setOffset(currentOffset);
@@ -164,17 +168,17 @@ const Reel = ({
         };
 
         animationRef.current = requestAnimationFrame(animateStop);
-      }, minSpinTime);
+      }, isTurbo ? 300 : 600);
 
       return () => {
         cancelAnimationFrame(animationRef.current);
         clearTimeout(stopTimer);
       };
     }
-  }, [isSpinning, targetSymbols, isTurbo]);
+  }, [isSpinning, targetSymbols, isTurbo, colIndex, onStop]);
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-zinc-950/60">
+    <div className="relative h-full w-full overflow-hidden bg-zinc-950/70 border-r border-zinc-800/80 last:border-r-0">
       <div 
         className="flex flex-col"
         style={{ transform: `translateY(${offset}px)` }}
@@ -190,71 +194,84 @@ const Reel = ({
       </div>
       
       {isSpinning && (
-        <div className="absolute inset-0 bg-gradient-to-b from-black/90 via-transparent to-black/90 pointer-events-none z-20" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-transparent to-black/80 pointer-events-none z-20" />
       )}
       
-      <div className="absolute inset-0 shadow-[inset_0_0_30px_rgba(0,0,0,1)] pointer-events-none z-10" />
+      <div className="absolute inset-0 shadow-[inset_0_0_20px_rgba(0,0,0,0.8)] pointer-events-none z-10" />
     </div>
   );
 };
 
-const SymbolIcon = ({ symbol, isWinning }: { symbol: SymbolType; isWinning?: boolean }) => (
-  <div className={cn(
-    "h-16 w-full flex items-center justify-center relative border border-white/5 rounded-sm overflow-hidden transition-all duration-300",
-    symbol.isScatter ? "bg-purple-500/10" : "bg-zinc-900",
-    isWinning && "scale-110 z-10 border-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.5)]"
-  )}>
-    <div className="relative w-full h-full flex items-center justify-center overflow-hidden group bg-zinc-900/30 rounded-lg">
-      <div className="absolute inset-0 shadow-[inset_0_0_15px_rgba(0,0,0,0.5)] pointer-events-none" />
-      
-      {symbol.isWild && (
-        <div className="absolute inset-0 bg-gradient-to-b from-yellow-400 to-orange-600 opacity-5 blur-xl group-hover:opacity-10 transition-opacity" />
-      )}
-      {symbol.isScatter && (
-        <div className="absolute inset-0 bg-gradient-to-b from-purple-500 to-pink-600 opacity-5 blur-xl group-hover:opacity-10 transition-opacity" />
-      )}
-      {symbol.id === 'strike' && (
-        <div className="absolute inset-0 bg-gradient-to-b from-blue-500 to-blue-800 opacity-5 blur-xl group-hover:opacity-10 transition-opacity" />
-      )}
-      {symbol.id === 'glove_card' && (
-        <div className="absolute inset-0 bg-gradient-to-b from-red-500 to-red-800 opacity-5 blur-xl group-hover:opacity-10 transition-opacity" />
-      )}
-      {symbol.id === 'king_card' && (
-        <div className="absolute inset-0 bg-gradient-to-b from-red-600 to-orange-600 opacity-5 blur-xl group-hover:opacity-10 transition-opacity" />
-      )}
+// High-Fidelity Symbol Icon with Guaranteed Vector Fallback
+const SymbolIcon = ({ symbol, isWinning }: { symbol: SymbolType; isWinning?: boolean }) => {
+  const [imgError, setImgError] = useState(false);
 
-      <div className="relative z-10 w-full h-full p-1 flex items-center justify-center">
-        <img 
-          src={symbol.img} 
-          alt={symbol.name}
-          className={cn(
-            "w-full h-full object-contain transition-transform duration-300 group-hover:scale-110",
-            (symbol.isWild || symbol.isScatter) && "animate-pulse"
-          )}
-          style={{ mixBlendMode: 'multiply', filter: 'contrast(1.2) brightness(1.1)' }}
-          referrerPolicy="no-referrer"
-        />
+  return (
+    <div className={cn(
+      "h-16 w-full flex items-center justify-center relative border border-white/5 transition-all duration-300 p-0.5",
+      symbol.isScatter ? "bg-purple-950/30" : "bg-zinc-900/60",
+      isWinning && "scale-105 z-10 border-amber-400 bg-amber-500/20 shadow-[0_0_20px_rgba(251,191,36,0.6)]"
+    )}>
+      <div className="relative w-full h-full flex items-center justify-center overflow-hidden rounded-lg">
+        {/* Vector Fallbacks if image fails or while loading */}
+        {imgError ? (
+          <div className="flex flex-col items-center justify-center text-center p-1 w-full h-full">
+            {symbol.id === 'king_card' && (
+              <div className="flex flex-col items-center">
+                <Crown size={24} className="text-amber-400 animate-pulse" />
+                <span className="text-[9px] font-black font-chakra text-amber-300">KING</span>
+              </div>
+            )}
+            {symbol.id === 'glove_card' && (
+              <div className="flex flex-col items-center">
+                <Flame size={24} className="text-rose-500" />
+                <span className="text-[9px] font-black font-chakra text-rose-300">GLOVE</span>
+              </div>
+            )}
+            {symbol.id === 'strike' && (
+              <div className="flex flex-col items-center">
+                <Zap size={24} className="text-blue-400" />
+                <span className="text-[9px] font-black font-chakra text-blue-300">STRIKE</span>
+              </div>
+            )}
+            {symbol.id === 'wild' && (
+              <div className="flex flex-col items-center bg-gradient-to-r from-amber-500 to-rose-500 px-2 py-1 rounded">
+                <span className="text-xs font-black font-chakra text-white">WILD</span>
+              </div>
+            )}
+            {symbol.id === 'bell' && (
+              <div className="flex flex-col items-center">
+                <Award size={24} className="text-yellow-400" />
+                <span className="text-[9px] font-black font-chakra text-yellow-300">BELL</span>
+              </div>
+            )}
+            {symbol.id === 'q' && (
+              <div className="flex flex-col items-center">
+                <span className="text-2xl font-black font-chakra text-rose-400">Q</span>
+              </div>
+            )}
+            {symbol.id === 'j' && (
+              <div className="flex flex-col items-center">
+                <span className="text-2xl font-black font-chakra text-cyan-400">J</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <img 
+            src={symbol.img} 
+            alt={symbol.name}
+            onError={() => setImgError(true)}
+            className={cn(
+              "w-full h-full object-contain p-1 transform transition-transform duration-200",
+              isWinning && "scale-115 filter drop-shadow-[0_0_12px_#fbbf24]"
+            )}
+            referrerPolicy="no-referrer"
+          />
+        )}
       </div>
-      
-      <div className="absolute bottom-0.5 right-1 text-[6px] font-bold text-white/20 uppercase italic tracking-widest">
-        {symbol.name}
-      </div>
-
-      {isWinning && (
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ 
-            opacity: [0.5, 1, 0.5],
-            scale: [1, 1.1, 1],
-            borderColor: ['#eab308', '#facc15', '#eab308']
-          }}
-          transition={{ repeat: Infinity, duration: 0.8 }}
-          className="absolute inset-0 border-4 border-yellow-500 rounded-lg pointer-events-none z-30"
-        />
-      )}
     </div>
-  </div>
-);
+  );
+};
 
 interface BoxerKingGameProps {
   user: any;
@@ -263,105 +280,57 @@ interface BoxerKingGameProps {
 }
 
 export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameProps) {
-  const [balance, setBalance] = useState(userData?.balance || 0);
-  const [bet, setBet] = useState(10);
-  const [winAmount, setWinAmount] = useState(0);
+  const [balance, setBalance] = useState<number>(() => userData?.balance ?? 500);
+  const [bet, setBet] = useState(50);
   const [isSpinning, setIsSpinning] = useState(false);
-  const [showBigWin, setShowBigWin] = useState(false);
-  const [reels, setReels] = useState<SymbolType[][]>(
-    Array(REEL_COUNT).fill(null).map(() => 
-      Array(ROW_COUNT).fill(null).map(() => SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)])
-    )
-  );
-  const [winningCells, setWinningCells] = useState<boolean[][]>(
-    Array(REEL_COUNT).fill(null).map(() => Array(ROW_COUNT).fill(false))
-  );
-
+  const [winAmount, setWinAmount] = useState(0);
+  const [comboMultiplier, setComboMultiplier] = useState(1);
+  const [freeSpins, setFreeSpins] = useState(0);
   const [isTurbo, setIsTurbo] = useState(false);
   const [isAuto, setIsAuto] = useState(false);
-  const [freeSpins, setFreeSpins] = useState(0);
-  const [showFreeSpinIntro, setShowFreeSpinIntro] = useState(false);
-  const [awardedSpinsCount, setAwardedSpinsCount] = useState(0);
-  const [showBetMenu, setShowBetMenu] = useState(false);
   const [isSoundEnabled, setIsSoundEnabled] = useState(true);
+  const [showBigWin, setShowBigWin] = useState(false);
+  const [showPaytable, setShowPaytable] = useState(false);
+  const [winBreakdown, setWinBreakdown] = useState<{ lineName: string; symName: string; matches: number; win: number }[]>([]);
+
+  const [reels, setReels] = useState<SymbolType[][]>(Array(REEL_COUNT).fill(null).map(() => Array(ROW_COUNT).fill(SYMBOLS[0])));
+  const [targetReels, setTargetReels] = useState<SymbolType[][]>(Array(REEL_COUNT).fill(null).map(() => Array(ROW_COUNT).fill(SYMBOLS[0])));
   const [reelSpinning, setReelSpinning] = useState<boolean[]>(Array(REEL_COUNT).fill(false));
-  const [targetReels, setTargetReels] = useState<SymbolType[][]>(reels);
-  const [isHighlighting, setIsHighlighting] = useState(false);
+  const [winningCells, setWinningCells] = useState<boolean[][]>(Array(REEL_COUNT).fill(null).map(() => Array(ROW_COUNT).fill(false)));
+
   const reelsStoppedCount = useRef(0);
 
-  const bgMusicRef = useRef<HTMLAudioElement | null>(null);
-
   useEffect(() => {
-    bgMusicRef.current = new Audio("https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3");
-    bgMusicRef.current.loop = true;
-    bgMusicRef.current.volume = 0.1;
-
-    const playMusic = () => {
-      if (isSoundEnabled && bgMusicRef.current) {
-        bgMusicRef.current.play().catch(() => {});
-      }
-      window.removeEventListener('click', playMusic);
-      window.removeEventListener('touchstart', playMusic);
-    };
-
-    window.addEventListener('click', playMusic);
-    window.addEventListener('touchstart', playMusic);
-
-    return () => {
-      bgMusicRef.current?.pause();
-      window.removeEventListener('click', playMusic);
-      window.removeEventListener('touchstart', playMusic);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (bgMusicRef.current) {
-      if (isSoundEnabled) {
-        bgMusicRef.current.play().catch(() => {});
-      } else {
-        bgMusicRef.current.pause();
-      }
-    }
-  }, [isSoundEnabled]);
-
-  // Rarity Counters
-  const [kingSpinCount, setKingSpinCount] = useState(0);
-  const [gloveSpinCount, setGloveSpinCount] = useState(0);
-  const [kingThreshold] = useState(() => Math.floor(Math.random() * 6) + 25);
-  const [gloveThreshold] = useState(() => Math.floor(Math.random() * 6) + 25);
-
-  // Sync balance with userData
-  useEffect(() => {
-    if (userData) {
+    if (userData?.balance !== undefined) {
       setBalance(userData.balance);
     }
-  }, [userData]);
+  }, [userData?.balance]);
 
   const handleSpin = useCallback(async () => {
-    if (isSpinning || (balance < bet && freeSpins === 0)) return;
-    setShowBetMenu(false);
+    if (isSpinning) return;
+    if (balance < bet && freeSpins === 0) {
+      haptics.error();
+      alert('Insufficient balance to spin!');
+      return;
+    }
 
     haptics.medium();
     setIsSpinning(true);
-    setReelSpinning(Array(REEL_COUNT).fill(true));
-    setShowBigWin(false);
     setWinAmount(0);
+    setWinBreakdown([]);
+    setComboMultiplier(1);
     playSound('spin', isSoundEnabled);
-    
-    // Deduct bet from Firestore
+
+    // Balance deduction
     if (freeSpins === 0) {
+      setBalance(prev => Math.max(0, prev - bet));
       try {
         await updateDoc(doc(db, 'users', user.uid), {
           balance: increment(-bet),
           turnover: increment(bet)
         });
-        setKingSpinCount(prev => prev + 1);
-        setGloveSpinCount(prev => prev + 1);
       } catch (err) {
         handleFirestoreError(err, OperationType.UPDATE, 'users');
-        setIsSpinning(false);
-        setReelSpinning(Array(REEL_COUNT).fill(false));
-        return;
       }
     } else {
       setFreeSpins(prev => prev - 1);
@@ -369,77 +338,51 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
 
     setWinningCells(Array(REEL_COUNT).fill(null).map(() => Array(ROW_COUNT).fill(false)));
 
-    // Outcome Generation based on centralized Global Win Probability (Fixed 5%)
-    const isWin = evaluateServerWinRoll();
-    let outcomeType: 'none' | 'small' | 'medium' | 'big' = 'none';
-    
-    if (isWin) {
-      const tierRoll = Math.random();
-      if (tierRoll < 0.15) outcomeType = 'big';
-      else if (tierRoll < 0.45) outcomeType = 'medium';
-      else outcomeType = 'small';
-    } else {
-      outcomeType = 'none';
-    }
-
-    const canTriggerKing = kingSpinCount >= kingThreshold || Math.random() < 0.005;
-    const canTriggerGlove = gloveSpinCount >= gloveThreshold || Math.random() < 0.004;
-    
-    let kingCardsPlaced = 0;
-    let gloveCardsPlaced = 0;
-
-    const newReels: SymbolType[][] = [];
-    const getStandardSymbol = () => {
-      const standardSymbols = SYMBOLS.filter(s => s.id !== 'king_card' && s.id !== 'glove_card' && !s.isWild);
-      return standardSymbols[Math.floor(Math.random() * standardSymbols.length)];
+    // Weighted Symbol Spawner supporting all valid symbols
+    const getWeightedSymbol = () => {
+      const weights = [
+        { id: 'king_card', weight: 8 },
+        { id: 'wild', weight: 6 },
+        { id: 'glove_card', weight: 5 },
+        { id: 'strike', weight: 15 },
+        { id: 'bell', weight: 18 },
+        { id: 'q', weight: 24 },
+        { id: 'j', weight: 24 },
+      ];
+      const totalWeight = weights.reduce((sum, w) => sum + w.weight, 0);
+      let rand = Math.random() * totalWeight;
+      for (const w of weights) {
+        if (rand < w.weight) {
+          return SYMBOLS.find(s => s.id === w.id)!;
+        }
+        rand -= w.weight;
+      }
+      return SYMBOLS.find(s => s.id === 'j')!;
     };
 
+    const newReels: SymbolType[][] = [];
     for (let c = 0; c < REEL_COUNT; c++) {
-      newReels.push(Array(ROW_COUNT).fill(null).map(() => getStandardSymbol()));
+      newReels.push(Array(ROW_COUNT).fill(null).map(() => getWeightedSymbol()));
     }
 
-    if (outcomeType !== 'none') {
-      const winRowCount = outcomeType === 'big' ? 3 : outcomeType === 'medium' ? 2 : 1;
-      const winSymbolCount = outcomeType === 'big' ? 5 : outcomeType === 'medium' ? 4 : 3;
-      
-      const rowsToWin = Array.from({ length: ROW_COUNT }, (_, i) => i)
-        .sort(() => Math.random() - 0.5)
-        .slice(0, winRowCount);
-
-      rowsToWin.forEach(rowIdx => {
-        const winSym = getStandardSymbol();
-        for (let c = 0; c < winSymbolCount; c++) {
-          newReels[c][rowIdx] = winSym;
-        }
-      });
-    } else {
-      for (let r = 0; r < ROW_COUNT; r++) {
-        if (newReels[0][r].id === newReels[1][r].id && newReels[1][r].id === newReels[2][r].id) {
-          const currentId = newReels[1][r].id;
-          newReels[2][r] = SYMBOLS.find(s => s.id !== currentId && s.id !== 'king_card' && s.id !== 'glove_card' && !s.isWild)!;
-        }
-      }
-    }
-
-    for (let c = 0; c < REEL_COUNT; c++) {
-      for (let r = 0; r < ROW_COUNT; r++) {
-        const rand = Math.random();
-        if (canTriggerKing && kingCardsPlaced < 3 && rand < 0.01) {
-          newReels[c][r] = SYMBOLS.find(s => s.id === 'king_card')!;
-          kingCardsPlaced++;
-        } else if (canTriggerGlove && gloveCardsPlaced < 5 && rand < 0.008) {
-          newReels[c][r] = SYMBOLS.find(s => s.id === 'glove_card')!;
-          gloveCardsPlaced++;
-        } else if (rand < 0.01) {
-          newReels[c][r] = SYMBOLS.find(s => s.isWild)!;
-        }
+    // Authoritative outcome check (Global Win Probability)
+    const isWin = evaluateServerWinRoll();
+    if (isWin) {
+      // Connect matching symbols along a payline (e.g. Center Row)
+      const eligibleWinSymbols = SYMBOLS.filter(s => !s.isScatter);
+      const winSym = eligibleWinSymbols[Math.floor(Math.random() * eligibleWinSymbols.length)];
+      const matchCount = Math.random() > 0.6 ? 5 : (Math.random() > 0.35 ? 4 : 3);
+      for (let c = 0; c < matchCount; c++) {
+        // Occasionally mix in a Wild on winning lines to verify Wild substitution
+        const useWild = Math.random() < 0.25;
+        newReels[c][1] = useWild ? SYMBOLS.find(s => s.isWild)! : winSym;
       }
     }
 
     setTargetReels(newReels);
     reelsStoppedCount.current = 0;
     setReelSpinning(Array(REEL_COUNT).fill(true));
-  }, [isSpinning, balance, bet, freeSpins, kingSpinCount, gloveSpinCount, kingThreshold, gloveThreshold, isTurbo, isSoundEnabled, user.uid]);
+  }, [isSpinning, balance, bet, freeSpins, isSoundEnabled, user.uid]);
 
   const handleReelStop = useCallback((colIndex: number) => {
     setReelSpinning(prev => {
@@ -447,489 +390,443 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
       next[colIndex] = false;
       return next;
     });
-    
+
     reelsStoppedCount.current += 1;
     if (reelsStoppedCount.current === REEL_COUNT) {
-      finalizeSpin(targetReels);
-    }
-  }, [targetReels]);
+      // All reels stopped simultaneously -> evaluate authoritative wins
+      setReels(targetReels);
 
-  const finalizeSpin = async (newReels: SymbolType[][]) => {
-    setReels(newReels);
+      let totalWin = 0;
+      const newWinningCells = Array(REEL_COUNT).fill(null).map(() => Array(ROW_COUNT).fill(false));
+      const breakdownList: { lineName: string; symName: string; matches: number; win: number }[] = [];
 
-    let totalWin = 0;
-    const newWinningCells = Array(REEL_COUNT).fill(null).map(() => Array(ROW_COUNT).fill(false));
-    let hasWin = false;
-    
-    for (let r = 0; r < ROW_COUNT; r++) {
-      const firstSymbol = newReels[0][r];
-      if (firstSymbol.id === 'king_card' || firstSymbol.id === 'glove_card') continue;
+      // 1. Evaluate All 5 Paylines with complete Wild substitution & Pure Wild payout
+      for (const payline of PAYLINES) {
+        const candidateSymbols = [
+          SYMBOLS.find(s => s.isWild)!,
+          ...SYMBOLS.filter(s => !s.isScatter && !s.isWild)
+        ];
 
-      let count = 1;
-      for (let c = 1; c < REEL_COUNT; c++) {
-        if (newReels[c][r].id === firstSymbol.id || newReels[c][r].isWild || firstSymbol.isWild) {
-          count++;
-        } else {
-          break;
+        let bestCandidateWin = 0;
+        let bestCandidateName = '';
+        let bestCandidateMatches = 0;
+        let bestCandidateCells: number[][] = [];
+
+        for (const candidate of candidateSymbols) {
+          let matches = 0;
+          const matchedCells: number[][] = [];
+
+          for (let i = 0; i < payline.cells.length; i++) {
+            const [c, r] = payline.cells[i];
+            const sym = targetReels[c][r];
+
+            if (candidate.isWild) {
+              if (sym.isWild) {
+                matches++;
+                matchedCells.push([c, r]);
+              } else {
+                break;
+              }
+            } else {
+              // Wild card substitutes for eligible regular candidate
+              if (sym.id === candidate.id || sym.isWild) {
+                matches++;
+                matchedCells.push([c, r]);
+              } else {
+                break;
+              }
+            }
+          }
+
+          if (matches >= 3) {
+            const mult = matches === 5 ? 6.0 : (matches === 4 ? 2.5 : 1.0);
+            const lineWin = Math.round((bet / 5) * (candidate.value / 10) * mult);
+            if (lineWin > bestCandidateWin) {
+              bestCandidateWin = lineWin;
+              bestCandidateName = candidate.name;
+              bestCandidateMatches = matches;
+              bestCandidateCells = matchedCells;
+            }
+          }
+        }
+
+        if (bestCandidateWin > 0) {
+          totalWin += bestCandidateWin;
+          bestCandidateCells.forEach(([c, r]) => {
+            newWinningCells[c][r] = true;
+          });
+          breakdownList.push({
+            lineName: payline.name,
+            symName: bestCandidateName,
+            matches: bestCandidateMatches,
+            win: bestCandidateWin
+          });
         }
       }
 
-      if (count >= 3) {
-        const winValue = (firstSymbol.isWild ? SYMBOLS[0].value : firstSymbol.value) * count * (bet / 10);
-        totalWin += winValue;
-        hasWin = true;
-        for (let c = 0; c < count; c++) {
-          newWinningCells[c][r] = true;
+      // 2. Evaluate Dedicated Glove Scatters (Free Spins Trigger)
+      let scatterCount = 0;
+      for (let c = 0; c < REEL_COUNT; c++) {
+        for (let r = 0; r < ROW_COUNT; r++) {
+          if (targetReels[c][r].isScatter) {
+            scatterCount++;
+            newWinningCells[c][r] = true;
+          }
         }
       }
-    }
 
-    let kingCount = 0;
-    let gloveCount = 0;
-    newReels.flat().forEach(s => {
-      if (s.id === 'king_card') kingCount++;
-      if (s.id === 'glove_card') gloveCount++;
-    });
+      if (scatterCount >= 3) {
+        const bonusSpins = scatterCount === 3 ? 5 : (scatterCount === 4 ? 10 : 15);
+        setFreeSpins(prev => prev + bonusSpins);
+        confetti({ particleCount: 140, spread: 80, origin: { y: 0.5 } });
+      }
 
-    let awardedFreeSpins = 0;
-    if (kingCount > 0) {
-      if (kingCount === 1) awardedFreeSpins += 2;
-      else if (kingCount === 2) awardedFreeSpins += 3;
-      else if (kingCount >= 3) awardedFreeSpins += 7;
-      setKingSpinCount(0);
-    }
+      // Apply combo strike multiplier
+      if (totalWin > 0) {
+        totalWin = Math.round(totalWin * comboMultiplier);
+      }
 
-    if (gloveCount >= 3) {
-      if (gloveCount === 3) awardedFreeSpins += 12;
-      else if (gloveCount === 4) awardedFreeSpins += 15;
-      else if (gloveCount >= 5) awardedFreeSpins += 20;
-      setGloveSpinCount(0);
-    }
-
-    // Log bet to Firestore
-    try {
-      await addDoc(collection(db, 'bets'), {
-        uid: user.uid,
-        gameName: 'Boxer King 1.0',
-        amount: freeSpins > 0 ? 0 : bet,
-        profit: totalWin - (freeSpins > 0 ? 0 : bet),
-        status: totalWin > 0 ? 'win' : 'loss',
-        createdAt: serverTimestamp()
-      });
-    } catch (err) {
-      console.error('Error logging bet:', err);
-    }
-
-    if (hasWin || awardedFreeSpins > 0) {
-      setIsHighlighting(true);
       setWinningCells(newWinningCells);
-      playSound('win', isSoundEnabled);
-      if (totalWin >= bet * 5 || awardedFreeSpins > 0) {
+      setWinBreakdown(breakdownList);
+
+      if (totalWin > 0) {
         haptics.win();
+        playSound('win', isSoundEnabled);
+        setWinAmount(totalWin);
+        setComboMultiplier(prev => Math.min(5, prev + 1));
+        setBalance(prev => prev + totalWin);
+
+        if (totalWin >= bet * 5) {
+          setShowBigWin(true);
+          playSound('bigWin', isSoundEnabled);
+          confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 } });
+        }
+
+        updateDoc(doc(db, 'users', user.uid), {
+          balance: increment(totalWin)
+        }).catch(() => {});
+
+        addDoc(collection(db, 'bets'), {
+          uid: user.uid,
+          gameName: 'TK333 Boxer King',
+          amount: bet,
+          profit: totalWin - bet,
+          status: 'win',
+          createdAt: serverTimestamp()
+        }).catch(() => {});
       } else {
-        haptics.light();
+        setComboMultiplier(1);
+        if (freeSpins === 0) {
+          addDoc(collection(db, 'bets'), {
+            uid: user.uid,
+            gameName: 'TK333 Boxer King',
+            amount: bet,
+            profit: -bet,
+            status: 'loss',
+            createdAt: serverTimestamp()
+          }).catch(() => {});
+        }
       }
 
-      setTimeout(async () => {
-        setIsHighlighting(false);
-        
-        if (awardedFreeSpins > 0) {
-          setAwardedSpinsCount(awardedFreeSpins);
-          setFreeSpins(prev => prev + awardedFreeSpins);
-          setShowFreeSpinIntro(true);
-          setTimeout(() => setShowFreeSpinIntro(false), 3000);
-        }
-
-        if (totalWin > 0) {
-          setWinAmount(totalWin);
-          try {
-            await updateDoc(doc(db, 'users', user.uid), {
-              balance: increment(totalWin)
-            });
-          } catch (err) {
-            handleFirestoreError(err, OperationType.UPDATE, 'users');
-          }
-          
-          if (totalWin >= bet * 10) {
-            setShowBigWin(true);
-            playSound('bigWin', isSoundEnabled);
-            confetti({
-              particleCount: 150,
-              spread: 70,
-              origin: { y: 0.6 },
-              colors: ['#FFD700', '#FFA500', '#FF4500']
-            });
-          }
-        }
-        setIsSpinning(false);
-      }, 1500);
-    } else {
       setIsSpinning(false);
     }
-  };
+  }, [targetReels, bet, comboMultiplier, freeSpins, isSoundEnabled, user.uid]);
 
+  // Auto spin handler
   useEffect(() => {
-    let autoTimer: NodeJS.Timeout;
+    let timer: NodeJS.Timeout;
     if (isAuto && !isSpinning && (balance >= bet || freeSpins > 0)) {
-      autoTimer = setTimeout(() => {
-        handleSpin();
-      }, 1000);
+      timer = setTimeout(handleSpin, 800);
     }
-    return () => clearTimeout(autoTimer);
+    return () => clearTimeout(timer);
   }, [isAuto, isSpinning, balance, bet, freeSpins, handleSpin]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#050505] text-white font-sans overflow-hidden flex justify-center items-center p-0 md:p-4 select-none">
-      {/* Back Button */}
-      <button 
-        onClick={onBack}
-        className="absolute top-4 left-4 z-[100] p-3 bg-black/40 backdrop-blur-md rounded-full border border-white/10 hover:bg-white/10 transition-all"
-      >
-        <ArrowLeft size={24} />
-      </button>
+    <div className="min-h-screen bg-[#070b14] text-white font-sans flex flex-col max-w-4xl mx-auto border-x border-slate-800 select-none shadow-2xl">
+      {/* 1. Header Bar */}
+      <header className="px-3 sm:px-6 py-2.5 bg-[#0b1120] border-b border-slate-800 flex items-center justify-between sticky top-0 z-40">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-chakra font-black active:scale-95 transition-all"
+          >
+            <ArrowLeft size={16} />
+            <span className="hidden sm:inline">EXIT</span>
+          </button>
 
-      {/* Main Game Container */}
-      <div className="w-full h-full max-w-[500px] bg-black relative overflow-hidden flex flex-col shadow-[0_0_60px_rgba(255,0,0,0.7)] md:rounded-[20px] md:border md:border-red-900/30">
-        
-        {/* Background Effects */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none bg-[#0a0010] z-0">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,_#1a0033_0%,_#050005_100%)]" />
-          <div className="absolute top-0 left-0 w-full h-full">
-            <div className="absolute top-20 left-[-10%] w-[60%] h-[60%] bg-pink-600/20 blur-[120px] rounded-full animate-pulse" />
-            <div className="absolute top-20 right-[-10%] w-[60%] h-[60%] bg-blue-600/20 blur-[120px] rounded-full animate-pulse" style={{ animationDelay: '1s' }} />
-          </div>
-          
-          <div className="absolute top-[2%] left-1/2 -translate-x-1/2 w-[140%] aspect-[2/1] opacity-30">
-            <svg viewBox="0 0 800 400" className="w-full h-full">
-              <path d="M50 200 Q400 50 750 200 Q400 350 50 200" fill="none" stroke="#444" strokeWidth="10" />
-              <circle cx="150" cy="145" r="8" fill="#fff" />
-              <circle cx="250" cy="135" r="8" fill="#fff" />
-              <circle cx="400" cy="120" r="8" fill="#fff" />
-              <circle cx="550" cy="135" r="8" fill="#fff" />
-              <circle cx="650" cy="145" r="8" fill="#fff" />
-            </svg>
+          <div className="flex items-center gap-2 bg-gradient-to-r from-amber-500/20 via-rose-500/10 to-amber-500/20 border border-amber-500/40 px-3 py-1 rounded-xl">
+            <Flame size={15} className="text-rose-500 animate-bounce" />
+            <span className="font-chakra font-black text-sm tracking-wider bg-gradient-to-r from-amber-300 via-rose-400 to-amber-300 bg-clip-text text-transparent uppercase">
+              TK333 BOXER KING
+            </span>
           </div>
         </div>
 
-        {/* Game Content */}
-        <div className="relative z-10 flex flex-col h-full">
-          
-          {/* Header */}
-          <div className="pt-6 pb-0 flex flex-col items-center shrink-0 relative z-50">
-            <motion.h1 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="text-2xl font-black italic tracking-tighter bg-gradient-to-b from-yellow-200 via-yellow-500 to-orange-600 bg-clip-text text-transparent drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            onClick={() => setShowPaytable(true)}
+            className="p-2 bg-slate-800/80 hover:bg-slate-700 rounded-xl text-slate-300 border border-slate-700 active:scale-95 transition-all"
+            title="Paytable & Rules"
+          >
+            <Info size={16} />
+          </button>
+
+          <button
+            onClick={() => setIsSoundEnabled(!isSoundEnabled)}
+            className="p-2 bg-slate-800/80 hover:bg-slate-700 rounded-xl text-slate-300 border border-slate-700 active:scale-95 transition-all"
+          >
+            {isSoundEnabled ? <Volume2 size={16} className="text-emerald-400" /> : <VolumeX size={16} className="text-rose-400" />}
+          </button>
+
+          <div className="flex items-center gap-2 bg-gradient-to-r from-slate-900 to-[#0e172a] px-3.5 py-1.5 rounded-xl border border-emerald-500/40">
+            <span className="text-[10px] uppercase font-mono font-bold text-slate-400">Balance</span>
+            <span className="font-rajdhani font-black text-emerald-400 text-base sm:text-lg">
+              {formatBDT(balance)}
+            </span>
+          </div>
+        </div>
+      </header>
+
+      {/* 2. Top Combo Multiplier Championship Bar (1x -> 2x -> 3x -> 5x) */}
+      <div className="bg-[#090e1a] px-4 py-2 border-b border-slate-800 flex items-center justify-between text-xs">
+        <span className="text-[10px] font-chakra font-black text-amber-400 uppercase tracking-widest flex items-center gap-1">
+          <Award size={14} className="text-amber-400" />
+          COMBO STRIKE MULTIPLIER:
+        </span>
+
+        <div className="flex items-center gap-2">
+          {[1, 2, 3, 5].map(m => (
+            <span
+              key={m}
+              className={`px-3 py-0.5 rounded-full font-rajdhani font-black text-xs border transition-all ${
+                comboMultiplier === m
+                  ? 'bg-gradient-to-r from-amber-500 to-rose-500 text-black border-amber-300 shadow-[0_0_12px_#fbbf24] scale-110'
+                  : 'bg-slate-800 text-slate-400 border-slate-700'
+              }`}
             >
-              BOXING KING
-            </motion.h1>
-            <div className="flex gap-1 mt-0.5">
-              {[1, 2, 3].map(i => (
-                <Flame key={i} className="w-2.5 h-2.5 text-orange-500 fill-current" />
+              {m}X
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* 3. Slot Machine Reels Arena */}
+      <div className="flex-1 p-3 sm:p-6 flex flex-col items-center justify-center space-y-4">
+        {/* Championship Boxing Ring Frame */}
+        <div className="w-full max-w-xl bg-gradient-to-b from-[#1e1124] via-[#0f0b18] to-[#08050e] p-2.5 sm:p-4 rounded-3xl border-4 border-amber-500/60 shadow-[0_0_50px_rgba(245,158,11,0.2)] relative">
+          {/* Top Championship Belt Plaque & Free Spins Badge */}
+          <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 flex items-center gap-2 z-30">
+            <div className="bg-gradient-to-r from-amber-600 via-yellow-400 to-amber-600 px-4 py-0.5 rounded-full border border-amber-200 text-black font-chakra font-black text-[10px] tracking-widest uppercase shadow-md flex items-center gap-1">
+              <Trophy size={12} />
+              WBC WORLD TITLE REELS
+            </div>
+            {freeSpins > 0 && (
+              <div className="bg-gradient-to-r from-rose-600 to-red-600 text-white px-3 py-0.5 rounded-full border border-rose-300 font-chakra font-black text-[10px] tracking-wider uppercase shadow-[0_0_12px_#ef4444] animate-pulse flex items-center gap-1">
+                <Flame size={12} />
+                FREE SPINS: {freeSpins}
+              </div>
+            )}
+          </div>
+
+          {/* 5x3 Reels Grid */}
+          <div className="grid grid-cols-5 gap-1 bg-black rounded-2xl overflow-hidden border border-zinc-800 p-1 h-[200px] sm:h-[220px]">
+            {reels.map((_, colIndex) => (
+              <Reel 
+                key={colIndex}
+                colIndex={colIndex}
+                isSpinning={reelSpinning[colIndex]}
+                targetSymbols={targetReels[colIndex]}
+                isTurbo={isTurbo}
+                onStop={() => handleReelStop(colIndex)}
+                winningCells={winningCells[colIndex]}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Winning Lines Breakdown HUD Overlay */}
+        <AnimatePresence>
+          {winBreakdown.length > 0 && !isSpinning && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              className="w-full max-w-xl flex items-center justify-center gap-1.5 flex-wrap px-1"
+            >
+              {winBreakdown.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-950/90 border border-amber-500/50 text-[11px] font-black text-amber-300 shadow-md backdrop-blur-sm"
+                >
+                  <Sparkles size={12} className="text-amber-400" />
+                  <span className="text-white">{item.lineName}:</span>
+                  <span>{item.matches}x {item.symName}</span>
+                  <span className="text-emerald-400 font-mono">+{formatBDT(item.win)}</span>
+                </div>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Win Telemetry Bar */}
+        <div className="w-full max-w-xl bg-slate-900/90 rounded-2xl border border-slate-800 p-3 flex items-center justify-between">
+          <div>
+            <span className="text-[10px] font-chakra font-black text-slate-400 uppercase block">Active Bet</span>
+            <span className="font-rajdhani font-black text-white text-lg">৳{bet}</span>
+          </div>
+
+          <div className="text-center">
+            {winAmount > 0 ? (
+              <div className="animate-pulse">
+                <span className="text-[10px] font-chakra font-black text-emerald-400 uppercase block">KO VICTORY WIN</span>
+                <span className="font-rajdhani font-black text-emerald-300 text-2xl">+{formatBDT(winAmount)}</span>
+              </div>
+            ) : (
+              <div>
+                <span className="text-[10px] font-chakra font-black text-slate-500 uppercase block">Ready for KO</span>
+                <span className="text-xs font-mono text-slate-400">5 Reels • 243 Ways</span>
+              </div>
+            )}
+          </div>
+
+          <div className="text-right">
+            <span className="text-[10px] font-chakra font-black text-slate-400 uppercase block">Free Spins</span>
+            <span className="font-rajdhani font-black text-amber-400 text-lg">{freeSpins}</span>
+          </div>
+        </div>
+
+        {/* 4. Betting Panel & Spin Controls */}
+        <div className="w-full max-w-xl bg-[#0f172a] rounded-3xl border border-slate-800 p-3 sm:p-5 space-y-4 shadow-xl">
+          {/* Quick Bet Chips */}
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-chakra font-black text-slate-400 uppercase tracking-wider block">
+              QUICK BET SELECTION:
+            </span>
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+              {BET_VALUES.map(val => (
+                <button
+                  key={val}
+                  disabled={isSpinning}
+                  onClick={() => {
+                    haptics.selection();
+                    setBet(val);
+                  }}
+                  className={`py-1.5 rounded-xl font-rajdhani font-black text-xs border transition-all ${
+                    bet === val
+                      ? 'bg-amber-500 text-black border-amber-300 shadow-[0_0_10px_#fbbf24] scale-105'
+                      : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700'
+                  }`}
+                >
+                  ৳{val}
+                </button>
               ))}
             </div>
           </div>
 
-          {/* Character Area */}
-          <div className="flex-1 relative flex items-center justify-center min-h-0">
-            <div className="w-full h-full max-h-[44vh]">
-              <div className="relative w-full h-full flex items-end justify-center">
-                <motion.div 
-                  animate={{ 
-                    y: isSpinning ? [0, -5, 0] : 0,
-                    filter: isSpinning ? 'brightness(1.2) contrast(1.1)' : 'brightness(1) contrast(1)'
-                  }}
-                  transition={{ repeat: isSpinning ? Infinity : 0, duration: 0.2 }}
-                  className="relative z-10 w-full h-full flex items-end justify-center"
-                >
-                  <div className="relative w-full h-full flex items-end justify-center overflow-visible">
-                    <img 
-                      src="https://supremeking.live/wp-content/uploads/2024/08/picks-image.png" 
-                      alt="Boxing King"
-                      className="w-full h-full object-contain object-bottom drop-shadow-[0_10px_30px_rgba(0,0,0,0.5)] scale-115 origin-bottom"
-                      referrerPolicy="no-referrer"
-                    />
-                    <div className="absolute inset-0 pointer-events-none">
-                      <div className="absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-black/40 to-transparent mix-blend-multiply" />
-                    </div>
-                  </div>
-                </motion.div>
-              </div>
-            </div>
+          {/* Action Row: Turbo, Spin, Auto */}
+          <div className="flex items-center justify-between gap-3 pt-1 border-t border-slate-800">
+            {/* Turbo Toggle */}
+            <button
+              onClick={() => {
+                haptics.selection();
+                setIsTurbo(!isTurbo);
+              }}
+              className={`p-3 rounded-2xl border flex items-center gap-1.5 transition-all ${
+                isTurbo
+                  ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.4)]'
+                  : 'bg-slate-800 border-slate-700 text-slate-400'
+              }`}
+            >
+              <Zap size={18} className={isTurbo ? 'fill-amber-400 text-amber-400' : ''} />
+              <span className="text-xs font-chakra font-black uppercase hidden sm:inline">TURBO</span>
+            </button>
 
-            {/* Free Spins Trigger Overlay */}
-            <AnimatePresence>
-              {showFreeSpinIntro && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="absolute inset-0 z-[110] flex items-center justify-center p-6 text-center bg-black/80 backdrop-blur-sm"
-                >
-                  <motion.div
-                    initial={{ scale: 0, rotate: -180 }}
-                    animate={{ scale: 1, rotate: 0 }}
-                    className="bg-gradient-to-b from-purple-600 to-indigo-900 p-8 rounded-3xl border-4 border-purple-400 shadow-[0_0_50px_rgba(168,85,247,0.5)]"
-                  >
-                    <motion.div
-                      animate={{ scale: [1, 1.2, 1] }}
-                      transition={{ repeat: Infinity, duration: 2 }}
-                      className="text-6xl mb-4"
-                    >
-                      🎰
-                    </motion.div>
-                    <h2 className="text-4xl font-black text-white italic mb-2 tracking-tighter">FREE SPINS!</h2>
-                    <p className="text-purple-200 font-bold text-lg mb-4 uppercase">YOU WON {toBengaliNumber(awardedSpinsCount)} ROUNDS</p>
-                    <motion.div 
-                      animate={{ opacity: [1, 0.5, 1] }}
-                      transition={{ repeat: Infinity, duration: 1 }}
-                      className="text-white font-bold text-xs uppercase tracking-[0.3em]"
-                    >
-                      Starting Now...
-                    </motion.div>
-                  </motion.div>
-                </motion.div>
+            {/* Huge Primary Spin Button */}
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={handleSpin}
+              disabled={isSpinning}
+              className={`flex-1 py-4 rounded-2xl font-chakra font-black text-lg uppercase tracking-wider shadow-2xl flex items-center justify-center gap-2 transition-all ${
+                isSpinning
+                  ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-rose-600 via-red-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-[0_0_30px_rgba(225,29,72,0.5)] cursor-pointer active:scale-98'
+              }`}
+            >
+              {isSpinning ? (
+                <div className="flex items-center gap-2">
+                  <RotateCcw size={20} className="animate-spin" />
+                  <span>SPINNING...</span>
+                </div>
+              ) : (
+                <span>SPIN NOW (৳{bet})</span>
               )}
-            </AnimatePresence>
+            </motion.button>
 
-            {/* Big Win Overlay */}
-            <AnimatePresence>
-              {showBigWin && (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="absolute inset-0 z-[120] flex flex-col items-center justify-center bg-black/90 backdrop-blur-xl overflow-hidden"
-                >
-                  <motion.div 
-                    animate={{ scale: [1, 1.3, 1], rotate: [0, 5, -5, 0] }}
-                    transition={{ repeat: Infinity, duration: 4 }}
-                    className="absolute w-[600px] h-[600px] bg-yellow-500/20 rounded-full blur-[120px]"
-                  />
-                  
-                  <div className="relative w-full h-full flex flex-col items-center justify-center">
-                    <motion.div 
-                      initial={{ y: -100, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      className="absolute top-16 z-20 text-center"
-                    >
-                      <motion.h2 
-                        animate={{ scale: [1, 1.1, 1], rotate: [0, 2, -2, 0] }}
-                        transition={{ repeat: Infinity, duration: 0.5 }}
-                        className="text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-100 via-yellow-400 to-orange-700 italic tracking-tighter drop-shadow-[0_15px_40px_rgba(0,0,0,1)]"
-                      >
-                        BIG WIN!
-                      </motion.h2>
-                    </motion.div>
-
-                    <motion.div 
-                      initial={{ scale: 0, rotate: -180 }}
-                      animate={{ scale: 1, rotate: 0 }}
-                      className="relative w-80 h-80 md:w-[450px] md:h-[450px] z-10"
-                    >
-                      <div className="w-full h-full rounded-full overflow-hidden border-8 border-yellow-500 shadow-[0_0_100px_rgba(255,215,0,0.7)] relative">
-                        <img 
-                          src="https://supremeking.live/wp-content/uploads/2024/08/picks-image.png" 
-                          alt="Boxing King Big Win"
-                          className="w-full h-full object-cover"
-                          style={{ filter: 'brightness(1.2) contrast(1.2)' }}
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-                      </div>
-                    </motion.div>
-
-                    <motion.div 
-                      initial={{ y: 100, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      className="absolute bottom-20 z-20 text-center"
-                    >
-                      <div className="text-7xl font-black text-white drop-shadow-[0_10px_25px_rgba(0,0,0,0.9)]">
-                        {toBengaliNumber(winAmount)} <span className="text-yellow-400 text-4xl">টাকা</span>
-                      </div>
-                      <div className="text-yellow-500 font-bold tracking-[0.6em] mt-3 text-base uppercase">
-                        Mega Payout
-                      </div>
-                      <button 
-                        onClick={() => setShowBigWin(false)}
-                        className="mt-8 bg-gradient-to-r from-yellow-500 to-orange-600 px-12 py-3 rounded-full font-black text-xl tracking-widest shadow-2xl active:scale-95 transition-transform"
-                      >
-                        COLLECT
-                      </button>
-                    </motion.div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Small Win Indicator */}
-            <AnimatePresence>
-              {winAmount > 0 && !showBigWin && (
-                <motion.div 
-                  initial={{ y: 50, opacity: 0, scale: 0 }}
-                  animate={{ y: 0, opacity: 1, scale: 1 }}
-                  exit={{ y: -50, opacity: 0 }}
-                  className="absolute z-30 font-black text-5xl text-transparent bg-clip-text bg-gradient-to-b from-yellow-200 to-orange-500 drop-shadow-[0_5px_15px_rgba(0,0,0,0.8)] italic tracking-tighter"
-                >
-                  WIN!
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Slot Grid Area */}
-          <div className="px-3 py-2 shrink-0">
-            <div className="bg-gradient-to-b from-zinc-800 to-zinc-950 rounded-xl border-2 border-zinc-700 p-1 shadow-xl relative">
-              <div className="grid grid-cols-5 gap-0.5 bg-black rounded-lg overflow-hidden h-[192px] relative">
-                {reels.map((reel, colIndex) => (
-                  <Reel 
-                    key={colIndex}
-                    colIndex={colIndex}
-                    isSpinning={reelSpinning[colIndex]}
-                    targetSymbols={targetReels[colIndex]}
-                    isTurbo={isTurbo}
-                    onStop={() => handleReelStop(colIndex)}
-                    winningCells={winningCells[colIndex]}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Footer Controls */}
-          <div className="bg-gradient-to-t from-black to-zinc-900 border-t border-zinc-800 p-3 pb-6 shrink-0">
-            <div className="flex flex-col gap-3">
-              
-              {/* Stats Bar */}
-              <div className="flex justify-between items-center bg-zinc-950/80 rounded-xl px-4 py-2 border border-zinc-800">
-                <div className="flex flex-col">
-                  <span className="text-[8px] text-zinc-500 uppercase font-bold">Balance</span>
-                  <span className="font-mono text-sm font-bold text-yellow-500">{toBengaliNumber(balance.toFixed(2))} টাকা</span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="text-[8px] text-zinc-500 uppercase font-bold">Win</span>
-                  <span className="text-sm font-black text-emerald-400 italic">{toBengaliNumber(winAmount.toFixed(2))} টাকা</span>
-                </div>
-                <div className="flex flex-col items-end">
-                  <span className="text-[8px] text-zinc-500 uppercase font-bold">Bet</span>
-                  <span className="font-mono text-sm font-bold text-white">{toBengaliNumber(bet)} টাকা</span>
-                </div>
-              </div>
-
-              {/* Main Buttons */}
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex gap-1.5">
-                  <button className="w-9 h-9 flex items-center justify-center bg-zinc-800 rounded-lg text-zinc-400">
-                    <Info className="w-4 h-4" />
-                  </button>
-                  <button 
-                    onClick={() => setIsSoundEnabled(!isSoundEnabled)}
-                    className="w-9 h-9 flex items-center justify-center bg-zinc-800 rounded-lg text-zinc-400"
-                  >
-                    {isSoundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <button 
-                    onClick={() => {
-                      haptics.selection();
-                      setIsTurbo(!isTurbo);
-                    }}
-                    className={cn(
-                      "w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all",
-                      isTurbo ? "border-yellow-500 text-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.5)]" : "border-zinc-700 text-zinc-500"
-                    )}
-                  >
-                    <Zap className={cn("w-5 h-5", isTurbo && "fill-current")} />
-                  </button>
-                  
-                  <motion.button 
-                    whileTap={{ scale: 0.95 }}
-                    onClick={handleSpin}
-                    disabled={isSpinning}
-                    className={cn(
-                      "w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-all relative group",
-                      isSpinning ? "bg-zinc-800" : "bg-gradient-to-br from-red-500 via-red-600 to-red-800"
-                    )}
-                  >
-                    <div className="absolute inset-1 rounded-full border border-white/20" />
-                    <span className="font-black text-xl italic tracking-tighter text-center leading-none">
-                      {isSpinning ? "..." : freeSpins > 0 ? `${toBengaliNumber(freeSpins)} FREE` : "SPIN"}
-                    </span>
-                  </motion.button>
-                  
-                  <button 
-                    onClick={() => {
-                      haptics.selection();
-                      setIsAuto(!isAuto);
-                    }}
-                    className={cn(
-                      "w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all",
-                      isAuto ? "border-green-500 text-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]" : "border-zinc-700 text-zinc-500"
-                    )}
-                  >
-                    <RotateCcw className={cn("w-5 h-5", isAuto && "animate-spin")} />
-                  </button>
-                </div>
-
-                <div className="relative">
-                  <button 
-                    onClick={() => {
-                      haptics.selection();
-                      setShowBetMenu(!showBetMenu);
-                    }}
-                    className="flex flex-col items-center bg-zinc-800 px-3 py-1 rounded-xl border border-zinc-700 hover:bg-zinc-700 transition-colors relative group"
-                  >
-                    <span className="text-[8px] text-zinc-500 uppercase font-bold">Bet</span>
-                    <div className="flex items-center gap-1">
-                      <span className="font-black text-sm text-yellow-500">{toBengaliNumber(bet)} টাকা</span>
-                      <motion.div 
-                        animate={{ y: [0, -4, 0] }} 
-                        transition={{ repeat: Infinity, duration: 1 }}
-                      >
-                        <ChevronUp className="w-4 h-4 text-red-500" />
-                      </motion.div>
-                    </div>
-                  </button>
-
-                  <AnimatePresence>
-                    {showBetMenu && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                        className="absolute bottom-full mb-2 right-0 z-[100] bg-zinc-900 border-2 border-yellow-600 rounded-xl p-2 shadow-2xl min-w-[220px]"
-                      >
-                        <div className="grid grid-cols-4 gap-1">
-                          {BET_VALUES.map((val) => (
-                            <button
-                              key={val}
-                              onClick={() => {
-                                haptics.selection();
-                                setBet(val);
-                                setShowBetMenu(false);
-                              }}
-                              className={cn(
-                                "py-2 rounded-lg font-mono font-bold text-[10px] transition-all",
-                                bet === val 
-                                  ? "bg-yellow-500 text-black scale-105" 
-                                  : "bg-zinc-800 text-white hover:bg-zinc-700"
-                              )}
-                            >
-                              {toBengaliNumber(val)}
-                            </button>
-                          ))}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </div>
-            </div>
+            {/* Auto Spin Toggle */}
+            <button
+              onClick={() => {
+                haptics.selection();
+                setIsAuto(!isAuto);
+              }}
+              className={`p-3 rounded-2xl border flex items-center gap-1.5 transition-all ${
+                isAuto
+                  ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.4)]'
+                  : 'bg-slate-800 border-slate-700 text-slate-400'
+              }`}
+            >
+              <RotateCcw size={18} className={isAuto ? 'animate-spin text-emerald-400' : ''} />
+              <span className="text-xs font-chakra font-black uppercase hidden sm:inline">AUTO</span>
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Paytable Modal */}
+      <AnimatePresence>
+        {showPaytable && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-[#0f172a] border border-amber-500/50 rounded-3xl p-5 w-full max-w-md shadow-2xl space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <Trophy className="text-amber-400" size={20} />
+                  <h3 className="font-chakra font-black text-sm uppercase text-white">
+                    BOXER KING PAYTABLE
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setShowPaytable(false)}
+                  className="p-1 rounded-xl text-slate-400 hover:text-white"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                {SYMBOLS.map(sym => (
+                  <div key={sym.id} className="flex items-center justify-between p-2 rounded-xl bg-slate-900 border border-slate-800">
+                    <span className="font-chakra font-black text-amber-300">{sym.name}</span>
+                    <span className="font-mono text-slate-300">
+                      {sym.isWild ? 'Wild (Replaces Any)' : `${sym.value}x Multiplier`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setShowPaytable(false)}
+                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-chakra font-black text-xs uppercase"
+              >
+                CLOSE
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

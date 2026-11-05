@@ -89,11 +89,11 @@ export default function Transactions({ userData, user }: TransactionsProps) {
 
           const randomBkash = bkashPool.length > 0
             ? bkashPool[Math.floor(Math.random() * bkashPool.length)]
-            : (siteData.depositBkashNumber || '01641404837');
+            : (siteData.depositBkashNumber || '');
 
           const randomNagad = nagadPool.length > 0
             ? nagadPool[Math.floor(Math.random() * nagadPool.length)]
-            : (siteData.depositNagadNumber || '01641404837');
+            : (siteData.depositNagadNumber || '');
 
           setShuffledNumbers(prev => ({
             ...prev,
@@ -164,17 +164,17 @@ export default function Transactions({ userData, user }: TransactionsProps) {
       return selected;
     }
 
-    const fallback = customMethod?.accountNumber || (targetMethod === 'nagad' ? (settings?.depositNagadNumber || '01641404837') : (settings?.depositBkashNumber || '01641404837'));
+    const fallback = customMethod?.accountNumber || (targetMethod === 'nagad' ? (settings?.depositNagadNumber || '') : (settings?.depositBkashNumber || ''));
     setShuffledNumbers(prev => ({ ...prev, [targetMethod]: fallback }));
     return fallback;
   };
 
   const activeMethodObj = customPaymentMethods.find(m => m.methodId === method);
 
-  const activeNumber = shuffledNumbers[method] || activeMethodObj?.accountNumber || (
+  const activeNumber = shuffledNumbers[method] || (
     method === 'nagad' 
-      ? (settings?.depositNagadNumber || '01641404837')
-      : (settings?.depositBkashNumber || '01641404837')
+      ? (settings?.depositNagadNumber || activeMethodObj?.accountNumber || '')
+      : (settings?.depositBkashNumber || activeMethodObj?.accountNumber || '')
   );
 
   const copyNumber = () => {

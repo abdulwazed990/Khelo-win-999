@@ -218,7 +218,7 @@ export default function SignalManagementTab({ lang, showToast }: SignalManagemen
     haptics.impact();
     const urlToOpen = signalAppUrl.trim() || defaultSignalUrl;
     if (typeof window !== 'undefined') {
-      window.open(urlToOpen, '_blank');
+      window.open(urlToOpen, 'tk333_signal_window', 'width=460,height=780,scrollbars=yes,resizable=yes');
     }
   };
 
@@ -596,15 +596,15 @@ export default function SignalManagementTab({ lang, showToast }: SignalManagemen
               </div>
 
               {/* Single Shared URL Policy Box */}
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 text-xs leading-relaxed space-y-1.5">
-                <div className="font-bold flex items-center gap-1.5 text-slate-900">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>{lang === 'bn' ? 'একক গ্লোবাল সিগন্যাল সিস্টেম' : 'Single Global Signal Architecture'}</span>
+              <div className="p-3.5 rounded-xl bg-purple-50/70 border border-purple-200 text-slate-800 text-xs leading-relaxed space-y-1.5">
+                <div className="font-bold flex items-center gap-1.5 text-purple-900">
+                  <ShieldCheck className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span>{lang === 'bn' ? '🔒 প্রাইভেট সেপারেট সিগন্যাল পলিসি (গেমের ভেতর অটো সিগন্যাল বন্ধ)' : '🔒 Private Separate Signal Policy'}</span>
                 </div>
-                <p className="text-slate-600 text-[11px]">
+                <p className="text-purple-900/90 text-[11px]">
                   {lang === 'bn' 
-                    ? 'এডমিন এই একটি মাত্র লিংক কপি করে যেকোনো সংখ্যক কাস্টমারকে শেয়ার করতে পারবেন। আলাদা কোনো কাস্টমার আইডি, টোকেন বা নামের প্রয়োজন নেই। যারা এই লিংকে ঢুকবেন সবাই একই সময়ে Aviator গেমের লাইভ রাউন্ড এবং প্রি-সিগন্যাল দেখতে পাবেন।'
-                    : 'The admin can copy this single URL and distribute it to any customer. No user-specific links or individual tokens are used. All customers connecting to this link see identical round timestamps, server signals, and flight telemetry in real-time.'}
+                    ? 'Aviator Fly গেমের ভেতরে খেলোয়াড়দের জন্য অটো সিগন্যাল বা পপআপ সম্পূর্ণ বন্ধ রাখা হয়েছে যাতে গেমের আসল ফিনিশিং বজায় থাকে। আপনি (এডমিন) এই সেপারেট লিঙ্কটি কপি করে যাকে ইচ্ছে শেয়ার করবেন—শুধুমাত্র তারাই আলাদা উইন্ডো বা ট্যাবে লাইভ সিগন্যাল ও প্রেডিকশন দেখতে পারবে।'
+                    : 'Auto-signals are completely hidden from the Aviator Fly game UI. The signal is only accessible via this separate link when you (admin) share it with players.'}
                 </p>
               </div>
             </div>

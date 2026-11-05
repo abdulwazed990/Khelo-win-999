@@ -334,15 +334,14 @@ export const INITIAL_SETTINGS: SiteSettings = {
   defaultLanguage: 'bn',
   telegramUrl: 'https://t.me/TK333_Official',
   liveChatUrl: 'https://tawk.to',
-  whatsappUrl: 'https://wa.me/8801641404837',
   facebookUrl: 'https://facebook.com/TK333Official',
   supportEnabled: true,
   maintenanceMode: false,
   footerText: 'TK333 কুরাকাও সরকার কর্তৃক লাইসেন্সপ্রাপ্ত ও নিয়ন্ত্রিত। ১৮+ দায়িত্বশীলভাবে খেলুন।',
   footerTextBn: 'TK333 কুরাকাও সরকার কর্তৃক লাইসেন্সপ্রাপ্ত ও নিয়ন্ত্রিত। ১৮+ দায়িত্বশীলভাবে খেলুন।',
   footerTextEn: 'TK333 is licensed and regulated by the Government of Curacao. 18+ Play Responsibly.',
-  depositBkashNumber: '01641404837',
-  depositNagadNumber: '01641404837'
+  depositBkashNumber: '',
+  depositNagadNumber: ''
 };
 
 export async function seedInitialFirestoreData() {
