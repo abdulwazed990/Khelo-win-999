@@ -65,13 +65,13 @@ export async function saveSiteSettings(
 
     // 2. Synchronize bKash and Nagad in payment_methods collection if numbers were updated
     try {
-      if (cleanUpdates.depositBkashNumbers || cleanUpdates.depositBkashNumber) {
+      if (cleanUpdates.depositBkashNumbers || cleanUpdates.depositBkashNumber || cleanUpdates.bkashLogoUrl) {
         const bkashList = Array.isArray(mergedData.depositBkashNumbers) 
           ? mergedData.depositBkashNumbers.filter(n => n && n.trim().length > 0)
           : (mergedData.depositBkashNumber ? [mergedData.depositBkashNumber] : []);
         const primaryBkash = bkashList[0] || mergedData.depositBkashNumber || '';
         
-        await safeSetDoc(doc(db, 'payment_methods', 'pm_bkash'), {
+        const bkashPayload: Record<string, any> = {
           methodId: 'bkash',
           name: 'bKash',
           nameBn: 'বিকাশ',
@@ -79,16 +79,21 @@ export async function saveSiteSettings(
           accountNumbers: bkashList,
           status: 'active',
           updatedAt: nowIso
-        }, { merge: true });
+        };
+        if (mergedData.bkashLogoUrl) {
+          bkashPayload.iconUrl = mergedData.bkashLogoUrl;
+        }
+
+        await safeSetDoc(doc(db, 'payment_methods', 'pm_bkash'), bkashPayload, { merge: true });
       }
 
-      if (cleanUpdates.depositNagadNumbers || cleanUpdates.depositNagadNumber) {
+      if (cleanUpdates.depositNagadNumbers || cleanUpdates.depositNagadNumber || cleanUpdates.nagadLogoUrl) {
         const nagadList = Array.isArray(mergedData.depositNagadNumbers) 
           ? mergedData.depositNagadNumbers.filter(n => n && n.trim().length > 0)
           : (mergedData.depositNagadNumber ? [mergedData.depositNagadNumber] : []);
         const primaryNagad = nagadList[0] || mergedData.depositNagadNumber || '';
 
-        await safeSetDoc(doc(db, 'payment_methods', 'pm_nagad'), {
+        const nagadPayload: Record<string, any> = {
           methodId: 'nagad',
           name: 'Nagad',
           nameBn: 'নগদ',
@@ -96,7 +101,12 @@ export async function saveSiteSettings(
           accountNumbers: nagadList,
           status: 'active',
           updatedAt: nowIso
-        }, { merge: true });
+        };
+        if (mergedData.nagadLogoUrl) {
+          nagadPayload.iconUrl = mergedData.nagadLogoUrl;
+        }
+
+        await safeSetDoc(doc(db, 'payment_methods', 'pm_nagad'), nagadPayload, { merge: true });
       }
     } catch (pmErr) {
       console.warn('Payment methods sync warning:', pmErr);

@@ -694,74 +694,144 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
     }
   }, [multiplier, gameState, isMuted]);
 
-  // Subscribe to Live Authoritative Round from Firestore
+  // Autonomous Continuous Authoritative Round Engine
+  const flightDurationRef = useRef<number>(6.0);
+
+  // Compute flight duration dynamically based on crash multiplier (realistic aviation climb curve)
+  const calculateFlightDuration = (crashTarget: number): number => {
+    // For low crashes (e.g. 1.05x - 1.5x): 2.5s - 4.5s
+    // For mid crashes (e.g. 2x - 5x): 5.5s - 9s
+    // For huge crashes (e.g. 10x - 50x): 10s - 14s
+    const dur = 3.0 + Math.log(Math.max(1.01, crashTarget)) * 4.5;
+    return Math.max(3.0, Math.min(16.0, dur));
+  };
+
+  // Helper to trigger a new authoritative countdown round
+  const startNewAuthoritativeRound = async () => {
+    const now = Date.now();
+    const roundId = generateRoundId();
+    const targetCrash = generateAviatorCrashMultiplier();
+    
+    currentRoundIdRef.current = roundId;
+    setCurrentRoundId(roundId);
+    crashMultRef.current = targetCrash;
+    flightDurationRef.current = calculateFlightDuration(targetCrash);
+
+    // Immediate local state reset (never blocked by network)
+    setGameState('WAITING');
+    setMultiplier(1.0);
+    setCountdown(5.0);
+    flightPointsRef.current = [];
+    particlesRef.current = [];
+    smokePuffsRef.current = [];
+    blastSparksRef.current = [];
+    blastFireballsRef.current = [];
+    blastShockwavesRef.current = [];
+    blastDebrisRef.current = [];
+    lastJetPosRef.current = { x: 80, y: 410, angle: -0.15 };
+    bet1CashedOutRef.current = false;
+    bet2CashedOutRef.current = false;
+
+    // Reset auto bets for new round
+    setBet1(prev => ({
+      ...prev,
+      isPlaced: prev.isAutoBet,
+      isCashedOut: false,
+      payout: 0
+    }));
+    setBet2(prev => ({
+      ...prev,
+      isPlaced: prev.isAutoBet,
+      isCashedOut: false,
+      payout: 0
+    }));
+
+    // Non-blocking broadcast
+    broadcastLiveGameRound({
+      roundId,
+      status: 'WAITING_FOR_ROUND',
+      currentMultiplier: 1.0,
+      finalMultiplier: targetCrash,
+      predictedMultiplier: targetCrash,
+      serverSignalStatus: 'SERVER_VERIFIED',
+      countdown: 5,
+      countdownStart: now,
+      countdownEndsAt: now + 5000,
+      serverTimestamp: now
+    }).catch(err => console.warn('Broadcast wait error:', err));
+  };
+
+  // Launch Flight after countdown completes
+  const advanceToFlight = () => {
+    if (gameState === 'IN_FLIGHT') return;
+    const now = Date.now();
+    startTimeRef.current = now;
+    flightPointsRef.current = [];
+    setGameState('IN_FLIGHT');
+    setMultiplier(1.0);
+
+    // Non-blocking broadcast
+    broadcastLiveGameRound({
+      roundId: currentRoundIdRef.current,
+      status: 'ROUND_RUNNING',
+      currentMultiplier: 1.0,
+      finalMultiplier: crashMultRef.current,
+      predictedMultiplier: crashMultRef.current,
+      serverSignalStatus: 'SERVER_VERIFIED',
+      startTime: new Date(now).toISOString(),
+      serverTimestamp: now
+    }).catch(err => console.warn('Broadcast flight error:', err));
+  };
+
+  // Finalize Crashed Flight and schedule next countdown round
+  const finishFlight = () => {
+    if (gameState === 'CRASHED') return;
+    const now = Date.now();
+    const finalMult = crashMultRef.current;
+    
+    // Immediate local state update
+    setGameState('CRASHED');
+    setMultiplier(finalMult);
+    haptics.heavy();
+
+    // Trigger high-velocity cinematic blast right at the jet's exact crash location
+    const blastX = lastJetPosRef.current.x || 600;
+    const blastY = lastJetPosRef.current.y || 200;
+    triggerBlast(blastX, blastY);
+    blastHandledRoundRef.current = currentRoundIdRef.current;
+
+    // Add to local history ribbon
+    setHistory(prev => [finalMult, ...prev.slice(0, 19)]);
+
+    // Non-blocking broadcast
+    broadcastLiveGameRound({
+      roundId: currentRoundIdRef.current,
+      status: 'ROUND_FINISHED',
+      currentMultiplier: finalMult,
+      finalMultiplier: finalMult,
+      predictedMultiplier: finalMult,
+      serverSignalStatus: 'SERVER_VERIFIED',
+      serverSignature: `sig_sha256_${currentRoundIdRef.current}_${finalMult}`,
+      crashTime: new Date(now).toISOString(),
+      serverTimestamp: now
+    }).catch(err => console.warn('Broadcast crash error:', err));
+
+    // After 2.5s crash celebration, automatically start next countdown round
+    setTimeout(() => {
+      startNewAuthoritativeRound();
+    }, 2500);
+  };
+
+  // Initialize or synchronize on mount
   useEffect(() => {
-    const unsubRound = subscribeToCurrentRound((round: SignalRound | null) => {
-      if (!round) {
-        // Initialize authoritative round if none exists
-        startNewAuthoritativeRound();
-        return;
-      }
-
-      const now = Date.now();
-      const serverTime = round.serverTimestamp || now;
-      const isStale = now - serverTime > 30000;
-
-      if (isStale) {
-        startNewAuthoritativeRound();
-        return;
-      }
-
-      setCurrentRoundId(round.roundId || generateRoundId());
-      const targetCrash = round.finalMultiplier || round.predictedMultiplier || 2.45;
-      crashMultRef.current = targetCrash;
-      if (round.predictedMultiplier) {
-        setPredictedMultiplier(round.predictedMultiplier);
-      }
-
-      if (round.status === 'WAITING_FOR_ROUND') {
-        setGameState('WAITING');
-        setMultiplier(1.0);
-        flightPointsRef.current = [];
-        particlesRef.current = [];
-        smokePuffsRef.current = [];
-        blastSparksRef.current = [];
-        blastFireballsRef.current = [];
-        blastShockwavesRef.current = [];
-        blastDebrisRef.current = [];
-        lastJetPosRef.current = { x: 80, y: 410, angle: -0.15 };
-        bet1CashedOutRef.current = false;
-        bet2CashedOutRef.current = false;
-
-        if (round.countdownEndsAt) {
-          const rem = Math.max(0, (round.countdownEndsAt - now) / 1000);
-          setCountdown(parseFloat(rem.toFixed(1)));
-        } else {
-          setCountdown(10.0);
-        }
-      } else if (round.status === 'ROUND_RUNNING') {
-        setGameState('IN_FLIGHT');
-        if (round.startTime) {
-          startTimeRef.current = new Date(round.startTime).getTime();
-        } else {
-          startTimeRef.current = now;
-        }
-      } else if (round.status === 'ROUND_FINISHED' || round.status === 'CRASHED') {
-        setGameState('CRASHED');
-        setMultiplier(targetCrash);
-        if (blastHandledRoundRef.current !== (round.roundId || '')) {
-          blastHandledRoundRef.current = round.roundId || '';
-          triggerBlast(lastJetPosRef.current.x || 600, lastJetPosRef.current.y || 200);
-        }
-      }
-    });
+    startNewAuthoritativeRound();
 
     const unsubHistory = subscribeToRoundsHistory((rounds) => {
       if (rounds && rounds.length > 0) {
         const multipliers = rounds
           .map(r => r.finalMultiplier || r.currentMultiplier || 1.0)
           .filter(m => m > 1.0)
-          .slice(0, 15);
+          .slice(0, 20);
         if (multipliers.length > 0) {
           setHistory(multipliers);
         }
@@ -769,143 +839,39 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
     });
 
     return () => {
-      unsubRound();
       unsubHistory();
     };
   }, []);
 
-  // Helper to trigger a new authoritative 10-second countdown round
-  const startNewAuthoritativeRound = async () => {
-    if (isAdvancingRef.current) return;
-    isAdvancingRef.current = true;
-    try {
-      const now = Date.now();
-      const roundId = generateRoundId();
-      const targetCrash = generateAviatorCrashMultiplier();
-      currentRoundIdRef.current = roundId;
-      crashMultRef.current = targetCrash;
-
-      // Reset auto bets for new round
-      setBet1(prev => ({
-        ...prev,
-        isPlaced: prev.isAutoBet,
-        isCashedOut: false,
-        payout: 0
-      }));
-      setBet2(prev => ({
-        ...prev,
-        isPlaced: prev.isAutoBet,
-        isCashedOut: false,
-        payout: 0
-      }));
-
-      await broadcastLiveGameRound({
-        roundId,
-        status: 'WAITING_FOR_ROUND',
-        currentMultiplier: 1.0,
-        finalMultiplier: targetCrash,
-        predictedMultiplier: targetCrash,
-        serverSignalStatus: 'SERVER_VERIFIED',
-        countdown: 10,
-        countdownStart: now,
-        countdownEndsAt: now + 10000,
-        serverTimestamp: now
-      });
-    } finally {
-      setTimeout(() => { isAdvancingRef.current = false; }, 1000);
-    }
-  };
-
-  // Launch Flight after 10-second countdown completes
-  const advanceToFlight = async () => {
-    if (isAdvancingRef.current || gameState === 'IN_FLIGHT') return;
-    isAdvancingRef.current = true;
-    try {
-      const now = Date.now();
-      startTimeRef.current = now;
-      flightPointsRef.current = [];
-      setGameState('IN_FLIGHT');
-
-      await broadcastLiveGameRound({
-        roundId: currentRoundIdRef.current,
-        status: 'ROUND_RUNNING',
-        currentMultiplier: 1.0,
-        finalMultiplier: crashMultRef.current,
-        predictedMultiplier: crashMultRef.current,
-        serverSignalStatus: 'SERVER_VERIFIED',
-        startTime: new Date(now).toISOString(),
-        serverTimestamp: now
-      });
-    } finally {
-      setTimeout(() => { isAdvancingRef.current = false; }, 1000);
-    }
-  };
-
-  // Finalize Crashed Flight and schedule next 10s countdown round
-  const finishFlight = async () => {
-    if (isAdvancingRef.current || gameState === 'CRASHED') return;
-    isAdvancingRef.current = true;
-    try {
-      const now = Date.now();
-      setGameState('CRASHED');
-      setMultiplier(crashMultRef.current);
-      haptics.heavy();
-
-      // Trigger high-velocity cinematic blast right at the jet's exact crash location
-      const blastX = lastJetPosRef.current.x || 600;
-      const blastY = lastJetPosRef.current.y || 200;
-      triggerBlast(blastX, blastY);
-      blastHandledRoundRef.current = currentRoundIdRef.current;
-
-      await broadcastLiveGameRound({
-        roundId: currentRoundIdRef.current,
-        status: 'ROUND_FINISHED',
-        currentMultiplier: crashMultRef.current,
-        finalMultiplier: crashMultRef.current,
-        predictedMultiplier: crashMultRef.current,
-        serverSignalStatus: 'SERVER_VERIFIED',
-        serverSignature: `sig_sha256_${currentRoundIdRef.current}_${crashMultRef.current}`,
-        crashTime: new Date(now).toISOString(),
-        serverTimestamp: now
-      });
-
-      // After 2.5s crash celebration, automatically start next 10-second countdown round
-      setTimeout(() => {
-        startNewAuthoritativeRound();
-      }, 2500);
-    } finally {
-      setTimeout(() => { isAdvancingRef.current = false; }, 1000);
-    }
-  };
-
-  // Precise 10-Second Flight Round Loop
+  // Autonomous Flight Loop with Wall-Clock Time Sync (Immune to Tab-Switch Pauses)
   useEffect(() => {
     let reqId: number;
     if (gameState === "IN_FLIGHT") {
-      const FLIGHT_DURATION_SECONDS = 10.0; // Strictly 10-second flight round
+      const flightDurationSec = flightDurationRef.current || 6.0;
 
       const loop = () => {
         const elapsedSec = (Date.now() - startTimeRef.current) / 1000;
-        const progress = Math.min(elapsedSec / FLIGHT_DURATION_SECONDS, 1.0);
+        const progress = Math.min(elapsedSec / flightDurationSec, 1.0);
 
         if (progress >= 1.0) {
           finishFlight();
           return;
         }
 
-        // Smooth progressive multiplier flight curve reaching target multiplier at exactly 10s
+        // Smooth progressive multiplier flight curve reaching target multiplier at flight end
         const target = crashMultRef.current;
-        const currentM = 1.00 + (target - 1.00) * Math.pow(progress, 1.75);
-        setMultiplier(parseFloat(currentM.toFixed(2)));
+        const currentM = 1.00 + (target - 1.00) * Math.pow(progress, 1.6);
+        const roundedM = parseFloat(currentM.toFixed(2));
+        setMultiplier(roundedM);
 
         // Check Auto Cashouts
         const b1 = bet1Ref.current;
         const b2 = bet2Ref.current;
 
-        if (b1.isPlaced && !bet1CashedOutRef.current && b1.isAutoCashOut && b1.autoCashOut && currentM >= b1.autoCashOut) {
+        if (b1.isPlaced && !bet1CashedOutRef.current && b1.isAutoCashOut && b1.autoCashOut && roundedM >= b1.autoCashOut) {
           cashOut(1, b1.autoCashOut);
         }
-        if (b2.isPlaced && !bet2CashedOutRef.current && b2.isAutoCashOut && b2.autoCashOut && currentM >= b2.autoCashOut) {
+        if (b2.isPlaced && !bet2CashedOutRef.current && b2.isAutoCashOut && b2.autoCashOut && roundedM >= b2.autoCashOut) {
           cashOut(2, b2.autoCashOut);
         }
 
@@ -917,7 +883,7 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
     return () => { if (reqId) cancelAnimationFrame(reqId); };
   }, [gameState]);
 
-  // Synchronized 10-Second Countdown in WAITING state
+  // Synchronized 5-Second Countdown in WAITING state
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (gameState === "WAITING") {
@@ -932,6 +898,21 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
       }, 100);
     }
     return () => clearInterval(interval);
+  }, [gameState]);
+
+  // Anti-Freeze Watchdog Timer: Runs every 500ms to guarantee 24/7 continuous progression
+  useEffect(() => {
+    const watchdog = setInterval(() => {
+      const now = Date.now();
+      if (gameState === 'IN_FLIGHT') {
+        const elapsed = (now - startTimeRef.current) / 1000;
+        const maxDuration = (flightDurationRef.current || 6.0) + 1.0;
+        if (elapsed > maxDuration) {
+          finishFlight();
+        }
+      }
+    }, 500);
+    return () => clearInterval(watchdog);
   }, [gameState]);
 
   // Place Bet
@@ -1372,9 +1353,9 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
           </button>
 
           {/* User Balance Chip */}
-          <div className="flex items-center gap-2 bg-gradient-to-r from-slate-900 to-[#0e172a] px-3.5 py-1.5 rounded-xl border border-emerald-500/40 shadow-sm">
+          <div className="flex items-center gap-2 bg-gradient-to-r from-slate-900 to-[#0e172a] px-3 sm:px-3.5 py-1.5 rounded-xl border border-emerald-500/40 shadow-sm">
             <span className="text-[10px] uppercase font-mono font-bold text-slate-400">Balance</span>
-            <span className="font-rajdhani font-black text-emerald-400 text-base sm:text-lg tracking-tight">
+            <span className="font-rajdhani font-black text-emerald-400 text-sm sm:text-lg tracking-tight">
               {formatBDT(balance)}
             </span>
           </div>
@@ -1394,7 +1375,7 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
             return (
               <span
                 key={idx}
-                className={`px-2.5 py-0.5 rounded-lg text-[11px] font-rajdhani font-black tracking-tight shrink-0 border ${
+                className={`px-2 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-rajdhani font-black tracking-tight shrink-0 border ${
                   isHigh
                     ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-[0_0_8px_rgba(245,158,11,0.3)]'
                     : isMedium
@@ -1416,31 +1397,31 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
         {/* Center Multiplier / State HUD */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-20">
           {gameState === 'WAITING' ? (
-            <div className="text-center bg-slate-950/80 backdrop-blur-md px-6 py-4 rounded-3xl border border-slate-700/60 shadow-2xl">
-              <span className="text-[11px] font-chakra font-black tracking-widest text-slate-400 uppercase block mb-1">
+            <div className="text-center bg-slate-950/80 backdrop-blur-md px-5 sm:px-6 py-3 sm:py-4 rounded-3xl border border-slate-700/60 shadow-2xl">
+              <span className="text-[10px] sm:text-[11px] font-chakra font-black tracking-widest text-slate-400 uppercase block mb-1">
                 NEXT ROUND TAKEOFF IN
               </span>
               <div
                 style={{ fontVariantNumeric: 'tabular-nums' }}
-                className="font-rajdhani tabular-nums font-black text-5xl sm:text-6xl text-amber-400 tracking-tight drop-shadow-[0_0_20px_rgba(251,191,36,0.4)]"
+                className="font-rajdhani tabular-nums font-black text-4xl sm:text-6xl text-amber-400 tracking-tight drop-shadow-[0_0_20px_rgba(251,191,36,0.4)]"
               >
                 {countdown.toFixed(1)}s
               </div>
-              <div className="w-36 h-1.5 bg-slate-800 rounded-full mx-auto mt-2 overflow-hidden">
+              <div className="w-28 sm:w-36 h-1.5 bg-slate-800 rounded-full mx-auto mt-2 overflow-hidden">
                 <div
                   className="h-full bg-amber-400 transition-all duration-100"
-                  style={{ width: `${(countdown / 10.0) * 100}%` }}
+                  style={{ width: `${(countdown / 5.0) * 100}%` }}
                 />
               </div>
-              <span className="text-[9px] font-mono text-slate-400 uppercase mt-2 block">
+              <span className="text-[8px] sm:text-[9px] font-mono text-slate-400 uppercase mt-2 block">
                 {countdown > 1.0 ? 'BETS ACCEPTED' : 'BETS LOCKED — PREPARING RUNWAY'}
               </span>
             </div>
           ) : gameState === 'CRASHED' ? (
             <div className="text-center animate-in zoom-in-95 duration-200">
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-rose-950/80 border border-rose-500/60 mb-2 backdrop-blur-md shadow-[0_0_30px_rgba(225,29,72,0.6)]">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping" />
-                <span className="font-chakra font-black text-xs sm:text-sm tracking-widest text-rose-200 uppercase">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-950/80 border border-rose-500/60 mb-2 backdrop-blur-md shadow-[0_0_30px_rgba(225,29,72,0.6)]">
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                <span className="font-chakra font-black text-[10px] sm:text-xs tracking-widest text-rose-200 uppercase">
                   FLEW AWAY
                 </span>
               </div>
@@ -1450,7 +1431,7 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
               >
                 {multiplier.toFixed(2)}x
               </div>
-              <div className="mt-2.5 flex items-center justify-center gap-2 text-[10px] sm:text-xs font-mono font-bold text-slate-300 bg-slate-950/80 px-4 py-1.5 rounded-xl border border-rose-500/30 shadow-lg mx-auto w-fit">
+              <div className="mt-2 flex items-center justify-center gap-2 text-[9px] sm:text-xs font-mono font-bold text-slate-300 bg-slate-950/80 px-3 py-1 rounded-xl border border-rose-500/30 shadow-lg mx-auto w-fit">
                 <span className="text-amber-400 animate-pulse">CRASHED AT {multiplier.toFixed(2)}x • NEXT FLIGHT IN 2.5s</span>
               </div>
             </div>
@@ -1483,14 +1464,14 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
               initial={{ opacity: 0, y: 30, scale: 0.85 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, scale: 1.1 }}
-              className="absolute top-6 left-1/2 -translate-x-1/2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-6 py-2.5 rounded-2xl shadow-[0_0_35px_rgba(16,185,129,0.6)] flex items-center gap-3 z-30 border border-emerald-300"
+              className="absolute top-6 left-1/2 -translate-x-1/2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-5 sm:px-6 py-2 rounded-2xl shadow-[0_0_35px_rgba(16,185,129,0.6)] flex items-center gap-2.5 z-30 border border-emerald-300"
             >
-              <Sparkles className="text-yellow-300" size={24} />
+              <Sparkles className="text-yellow-300" size={20} />
               <div>
-                <span className="text-[10px] font-chakra font-black uppercase text-emerald-100 block">
+                <span className="text-[9px] font-chakra font-black uppercase text-emerald-100 block">
                   CASHOUT CONFIRMED ({cashoutPopup.mult.toFixed(2)}x)
                 </span>
-                <span className="font-rajdhani font-black text-xl text-white">
+                <span className="font-rajdhani font-black text-lg sm:text-xl text-white">
                   +{formatBDT(cashoutPopup.amount)}
                 </span>
               </div>
@@ -1499,10 +1480,10 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
         </AnimatePresence>
       </div>
 
-      {/* 4. Dual Betting Stations (Responsive: Stacks on mobile, side-by-side on tablet/desktop) */}
-      <div className="p-3 sm:p-5 grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-5 bg-[#090f1d] flex-1">
+      {/* 4. Dual Betting Stations: Side-by-side on mobile (Deck 1 on left, Deck 2 on right) */}
+      <div className="p-2 sm:p-4 grid grid-cols-2 gap-2 sm:gap-4 bg-[#090f1d] flex-1">
         <BetStation
-          title="PILOT DECK 1"
+          title="DECK 1"
           bet={bet1}
           setBet={setBet1}
           onPlace={() => placeBet(1)}
@@ -1514,7 +1495,7 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
         />
 
         <BetStation
-          title="PILOT DECK 2"
+          title="DECK 2"
           bet={bet2}
           setBet={setBet2}
           onPlace={() => placeBet(2)}
@@ -1552,7 +1533,7 @@ function BetStation({
   multiplier,
   balance
 }: BetStationProps) {
-  const canPlace = gameState === 'WAITING' && countdown > 1.0;
+  const canPlace = gameState === 'WAITING' && countdown > 0.8;
   const canCashOut = gameState === 'IN_FLIGHT' && bet.isPlaced && !bet.isCashedOut;
   const currentCashoutValue = Math.round(bet.amount * multiplier * 100) / 100;
   const netProfit = currentCashoutValue - bet.amount;
@@ -1560,164 +1541,161 @@ function BetStation({
   const quickChips = [20, 50, 100, 200, 500, 1000];
 
   return (
-    <div className="bg-[#0f172a] rounded-2xl border border-slate-800 p-3.5 sm:p-4 flex flex-col justify-between gap-3 shadow-lg">
+    <div className="bg-[#0f172a] rounded-xl sm:rounded-2xl border border-slate-800 p-2 sm:p-3 flex flex-col justify-between gap-2 shadow-lg">
       {/* Station Header */}
-      <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
-        <span className="text-[11px] font-chakra font-black text-slate-300 tracking-wider uppercase flex items-center gap-1.5">
-          <Zap size={13} className="text-amber-400" />
+      <div className="flex items-center justify-between border-b border-slate-800/80 pb-1.5">
+        <span className="text-[10px] sm:text-[11px] font-chakra font-black text-slate-300 tracking-wider uppercase flex items-center gap-1">
+          <Zap size={12} className="text-amber-400" />
           {title}
         </span>
 
         {/* Auto Cashout toggle */}
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono text-slate-400 uppercase font-bold">Auto Cashout</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] font-mono text-slate-400 uppercase font-bold hidden sm:inline">Auto</span>
           <button
             onClick={() => {
               haptics.selection();
               setBet(prev => ({ ...prev, isAutoCashOut: !prev.isAutoCashOut }));
             }}
-            className={`w-9 h-5 rounded-full p-0.5 transition-colors ${
+            className={`w-7 sm:w-8 h-4 rounded-full p-0.5 transition-colors ${
               bet.isAutoCashOut ? 'bg-emerald-500' : 'bg-slate-700'
             }`}
           >
             <div
-              className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                bet.isAutoCashOut ? 'translate-x-4' : 'translate-x-0'
+              className={`w-3 h-3 rounded-full bg-white transition-transform ${
+                bet.isAutoCashOut ? 'translate-x-3 sm:translate-x-4' : 'translate-x-0'
               }`}
             />
           </button>
         </div>
       </div>
 
-      {/* Main Bet Controls Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {/* Left: Amount Input and Quick Chips */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between bg-slate-900/90 rounded-xl border border-slate-700/80 p-1">
-            <button
-              disabled={bet.isPlaced}
-              onClick={() => {
-                haptics.selection();
-                setBet(prev => ({ ...prev, amount: Math.max(10, prev.amount - 20) }));
-              }}
-              className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center font-black active:scale-90 transition-all disabled:opacity-40"
-            >
-              <Minus size={14} />
-            </button>
+      {/* Main Bet Amount Control */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between bg-slate-900/90 rounded-lg sm:rounded-xl border border-slate-700/80 px-1 py-0.5">
+          <button
+            disabled={bet.isPlaced}
+            onClick={() => {
+              haptics.selection();
+              setBet(prev => ({ ...prev, amount: Math.max(10, prev.amount - 20) }));
+            }}
+            className="w-7 h-7 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center font-black active:scale-90 transition-all disabled:opacity-40"
+          >
+            <Minus size={12} />
+          </button>
 
-            <div className="flex items-center gap-1">
-              <span className="text-xs font-black text-amber-400">৳</span>
-              <input
-                type="number"
-                disabled={bet.isPlaced}
-                value={bet.amount}
-                onChange={e => {
-                  const val = Math.max(10, parseFloat(e.target.value) || 0);
-                  setBet(prev => ({ ...prev, amount: val }));
-                }}
-                className="bg-transparent text-center font-rajdhani font-black text-lg text-white w-20 outline-none disabled:opacity-50"
-              />
-            </div>
-
-            <button
+          <div className="flex items-center gap-0.5">
+            <span className="text-[11px] font-black text-amber-400">৳</span>
+            <input
+              type="number"
               disabled={bet.isPlaced}
-              onClick={() => {
-                haptics.selection();
-                setBet(prev => ({ ...prev, amount: prev.amount + 20 }));
+              value={bet.amount}
+              onChange={e => {
+                const val = Math.max(10, parseFloat(e.target.value) || 0);
+                setBet(prev => ({ ...prev, amount: val }));
               }}
-              className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center font-black active:scale-90 transition-all disabled:opacity-40"
-            >
-              <Plus size={14} />
-            </button>
+              className="bg-transparent text-center font-rajdhani font-black text-base sm:text-lg text-white w-14 sm:w-16 outline-none disabled:opacity-50"
+            />
           </div>
 
-          {/* Quick Chip Presets */}
-          <div className="grid grid-cols-6 gap-1">
-            {quickChips.map(amt => (
-              <button
-                key={amt}
-                disabled={bet.isPlaced}
-                onClick={() => {
-                  haptics.selection();
-                  setBet(prev => ({ ...prev, amount: amt }));
-                }}
-                className={`py-1 rounded-lg text-[10px] font-rajdhani font-black border transition-all disabled:opacity-40 ${
-                  bet.amount === amt
-                    ? 'bg-blue-600 text-white border-blue-400'
-                    : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700'
-                }`}
-              >
-                ৳{amt}
-              </button>
-            ))}
-          </div>
+          <button
+            disabled={bet.isPlaced}
+            onClick={() => {
+              haptics.selection();
+              setBet(prev => ({ ...prev, amount: prev.amount + 20 }));
+            }}
+            className="w-7 h-7 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center font-black active:scale-90 transition-all disabled:opacity-40"
+          >
+            <Plus size={12} />
+          </button>
         </div>
 
-        {/* Right: Big Dynamic Action Button */}
-        <div>
-          {canCashOut ? (
+        {/* Quick Chip Presets (2 rows of 3) */}
+        <div className="grid grid-cols-3 gap-1">
+          {quickChips.map(amt => (
             <button
-              onClick={onCashOut}
-              className="w-full h-full min-h-[72px] rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-500 text-white p-2 flex flex-col items-center justify-center shadow-[0_0_25px_rgba(245,158,11,0.5)] active:scale-98 transition-all animate-pulse"
-            >
-              <span className="text-[11px] font-chakra font-black tracking-widest uppercase">
-                CASH OUT
-              </span>
-              <span className="font-rajdhani font-black text-2xl leading-tight">
-                ৳{currentCashoutValue.toFixed(2)}
-              </span>
-              <span className="text-[10px] font-bold text-emerald-100">
-                Profit: +৳{netProfit.toFixed(2)}
-              </span>
-            </button>
-          ) : bet.isPlaced && gameState === 'WAITING' ? (
-            <button
+              key={amt}
+              disabled={bet.isPlaced}
               onClick={() => {
                 haptics.selection();
-                setBet(prev => ({ ...prev, isPlaced: false }));
+                setBet(prev => ({ ...prev, amount: amt }));
               }}
-              className="w-full h-full min-h-[72px] rounded-xl bg-rose-950/40 hover:bg-rose-900/50 border border-rose-500/50 text-rose-400 p-2 flex flex-col items-center justify-center active:scale-98 transition-all"
-            >
-              <span className="text-xs font-chakra font-black uppercase tracking-wider">CANCEL BET</span>
-              <span className="text-xs font-mono mt-0.5">৳{bet.amount}</span>
-            </button>
-          ) : bet.isPlaced && gameState === 'IN_FLIGHT' ? (
-            <div className="w-full h-full min-h-[72px] rounded-xl bg-slate-800/60 border border-slate-700 p-2 flex flex-col items-center justify-center text-slate-400">
-              <span className="text-xs font-chakra font-black uppercase tracking-wider">IN FLIGHT...</span>
-              <span className="text-xs font-mono">Flight Mult: {multiplier.toFixed(2)}x</span>
-            </div>
-          ) : (
-            <button
-              disabled={!canPlace}
-              onClick={onPlace}
-              className={`w-full h-full min-h-[72px] rounded-xl p-2 flex flex-col items-center justify-center transition-all ${
-                canPlace
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.3)] active:scale-98 cursor-pointer'
-                  : 'bg-slate-800 text-slate-500 border border-slate-700/60 cursor-not-allowed'
+              className={`py-0.5 rounded text-[9px] sm:text-[10px] font-rajdhani font-black border transition-all disabled:opacity-40 ${
+                bet.amount === amt
+                  ? 'bg-blue-600 text-white border-blue-400'
+                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700'
               }`}
             >
-              <span className="text-sm font-chakra font-black tracking-wider uppercase">
-                {gameState === 'WAITING' ? 'PLACE BET' : 'WAIT FOR NEXT ROUND'}
-              </span>
-              <span className="font-rajdhani font-black text-xl">৳{bet.amount.toFixed(2)}</span>
+              ৳{amt}
             </button>
-          )}
+          ))}
         </div>
+      </div>
+
+      {/* Dynamic Action Button */}
+      <div>
+        {canCashOut ? (
+          <button
+            onClick={onCashOut}
+            className="w-full min-h-[58px] sm:min-h-[64px] rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-400 hover:to-orange-500 text-white p-1.5 flex flex-col items-center justify-center shadow-[0_0_20px_rgba(245,158,11,0.5)] active:scale-98 transition-all animate-pulse"
+          >
+            <span className="text-[10px] font-chakra font-black tracking-widest uppercase">
+              CASH OUT
+            </span>
+            <span className="font-rajdhani font-black text-lg sm:text-xl leading-tight">
+              ৳{currentCashoutValue.toFixed(2)}
+            </span>
+            <span className="text-[8px] font-bold text-emerald-100">
+              +{multiplier.toFixed(2)}x
+            </span>
+          </button>
+        ) : bet.isPlaced && gameState === 'WAITING' ? (
+          <button
+            onClick={() => {
+              haptics.selection();
+              setBet(prev => ({ ...prev, isPlaced: false }));
+            }}
+            className="w-full min-h-[58px] sm:min-h-[64px] rounded-xl bg-rose-950/40 hover:bg-rose-900/50 border border-rose-500/50 text-rose-400 p-1.5 flex flex-col items-center justify-center active:scale-98 transition-all"
+          >
+            <span className="text-[10px] font-chakra font-black uppercase tracking-wider">CANCEL BET</span>
+            <span className="text-[10px] font-mono mt-0.5">৳{bet.amount}</span>
+          </button>
+        ) : bet.isPlaced && gameState === 'IN_FLIGHT' ? (
+          <div className="w-full min-h-[58px] sm:min-h-[64px] rounded-xl bg-slate-800/60 border border-slate-700 p-1.5 flex flex-col items-center justify-center text-slate-400">
+            <span className="text-[10px] font-chakra font-black uppercase tracking-wider">IN FLIGHT...</span>
+            <span className="text-[10px] font-mono">{multiplier.toFixed(2)}x</span>
+          </div>
+        ) : (
+          <button
+            disabled={!canPlace}
+            onClick={onPlace}
+            className={`w-full min-h-[58px] sm:min-h-[64px] rounded-xl p-1.5 flex flex-col items-center justify-center transition-all ${
+              canPlace
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.3)] active:scale-98 cursor-pointer'
+                : 'bg-slate-800 text-slate-500 border border-slate-700/60 cursor-not-allowed'
+            }`}
+          >
+            <span className="text-[11px] font-chakra font-black tracking-wider uppercase">
+              {gameState === 'WAITING' ? 'BET' : 'WAIT'}
+            </span>
+            <span className="font-rajdhani font-black text-base sm:text-lg">৳{bet.amount}</span>
+          </button>
+        )}
       </div>
 
       {/* Auto Cashout multiplier input when enabled */}
       {bet.isAutoCashOut && (
-        <div className="flex items-center justify-between bg-slate-900/60 p-2 rounded-xl border border-slate-800 text-xs">
-          <span className="text-slate-400 font-bold">Cashout at:</span>
-          <div className="flex items-center gap-1.5">
-            {[1.5, 2.0, 5.0, 10.0].map(m => (
+        <div className="flex items-center justify-between bg-slate-900/60 p-1 rounded-lg border border-slate-800 text-[10px]">
+          <span className="text-slate-400 font-bold hidden sm:inline">Auto at:</span>
+          <div className="flex items-center gap-1 w-full justify-around">
+            {[1.5, 2.0, 5.0].map(m => (
               <button
                 key={m}
                 onClick={() => {
                   haptics.selection();
                   setBet(prev => ({ ...prev, autoCashOut: m }));
                 }}
-                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border transition-colors ${
+                className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border transition-colors ${
                   bet.autoCashOut === m
                     ? 'bg-emerald-500 text-white border-emerald-400'
                     : 'bg-slate-800 text-slate-300 border-slate-700'

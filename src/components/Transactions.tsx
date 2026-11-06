@@ -37,14 +37,15 @@ const DEFAULT_LOGOS: Record<string, string> = {
 };
 
 const DEPOSIT_PACKAGES = [
-  { amount: 500, bonus: 25 },
+  { amount: 300, bonus: 30 },
+  { amount: 500, bonus: 50 },
   { amount: 1000, bonus: 100 },
-  { amount: 2500, bonus: 375 },
-  { amount: 5000, bonus: 1000 },
-  { amount: 10000, bonus: 2500 },
+  { amount: 2500, bonus: 250 },
+  { amount: 5000, bonus: 500 },
+  { amount: 10000, bonus: 1000 },
 ];
 
-const PRESET_AMOUNTS = [500, 1000, 2000, 5000, 10000, 15000, 20000, 30000];
+const PRESET_AMOUNTS = [300, 500, 1000, 2000, 5000, 10000, 15000, 20000];
 
 export default function Transactions({ userData, user }: TransactionsProps) {
   const { lang, t } = useLanguage();
@@ -194,11 +195,14 @@ export default function Transactions({ userData, user }: TransactionsProps) {
     if (!userData) return;
     
     const numAmount = Number(amount);
-    if (!numAmount || numAmount < 200) {
+    if (!numAmount || numAmount < 300) {
       haptics.error();
-      setError(lang === 'bn' ? 'সর্বনিম্ন ডিপোজিট পরিমাণ ৳২০০।' : 'Minimum deposit amount is ৳200.');
+      setError(lang === 'bn' ? 'সর্বনিম্ন ডিপোজিট পরিমাণ ৳৩০০।' : 'Minimum deposit amount is ৳300.');
       return;
     }
+
+    const bonusAmount = Math.round(numAmount * 0.10);
+    const totalCredit = numAmount + bonusAmount;
 
     setLoading(true);
     setError('');
@@ -212,6 +216,8 @@ export default function Transactions({ userData, user }: TransactionsProps) {
         type: 'deposit',
         method,
         amount: numAmount,
+        bonusAmount,
+        totalCredit,
         currency: 'BDT',
         status: 'pending',
         referenceId: requestId,
@@ -324,18 +330,33 @@ export default function Transactions({ userData, user }: TransactionsProps) {
     );
   }
 
-  // Available display methods (bKash & Nagad only)
-  const methodsToDisplay = (customPaymentMethods.length > 0
-    ? customPaymentMethods.filter(m => m.methodId !== 'rocket')
-    : []
-  );
+  // Dedicated bKash and Nagad payment methods with permanent logo persistence (Public UI: bKash & Nagad ONLY)
+  const bkashCustom = customPaymentMethods.find(m => m.methodId === 'bkash');
+  const nagadCustom = customPaymentMethods.find(m => m.methodId === 'nagad');
 
-  const finalMethods = methodsToDisplay.length > 0
-    ? methodsToDisplay
-    : [
-        { id: '1', methodId: 'bkash', name: 'bKash', nameBn: 'বিকাশ', iconUrl: DEFAULT_LOGOS.bkash, status: 'active' as const, sortOrder: 1 },
-        { id: '2', methodId: 'nagad', name: 'Nagad', nameBn: 'নগদ', iconUrl: DEFAULT_LOGOS.nagad, status: 'active' as const, sortOrder: 2 },
-      ];
+  const bkashLogo = settings?.bkashLogoUrl || bkashCustom?.iconUrl || DEFAULT_LOGOS.bkash;
+  const nagadLogo = settings?.nagadLogoUrl || nagadCustom?.iconUrl || DEFAULT_LOGOS.nagad;
+
+  const finalMethods = [
+    { 
+      id: 'bkash', 
+      methodId: 'bkash', 
+      name: 'bKash', 
+      nameBn: 'বিকাশ', 
+      iconUrl: bkashLogo, 
+      status: 'active' as const, 
+      sortOrder: 1 
+    },
+    { 
+      id: 'nagad', 
+      methodId: 'nagad', 
+      name: 'Nagad', 
+      nameBn: 'নগদ', 
+      iconUrl: nagadLogo, 
+      status: 'active' as const, 
+      sortOrder: 2 
+    },
+  ];
 
   return (
     <div className="space-y-4 max-w-md mx-auto">
@@ -552,13 +573,21 @@ export default function Transactions({ userData, user }: TransactionsProps) {
               <Coins className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
               <input 
                 type="number"
-                placeholder={lang === 'bn' ? 'টাকার পরিমাণ লিখুন' : 'Enter amount'}
+                placeholder={lang === 'bn' ? 'টাকার পরিমাণ লিখুন (সর্বনিম্ন ৳৩০০)' : 'Enter amount (min ৳300)'}
                 required
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 font-rajdhani text-base font-black focus:bg-white focus:border-blue-600 outline-none transition-all"
               />
             </div>
+            {tab === 'deposit' && Number(amount) >= 300 && (
+              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs flex items-center justify-between text-emerald-800 font-medium">
+                <span className="font-chakra">{lang === 'bn' ? '১০% ওয়েলকাম বোনাস:' : '10% Welcome Bonus:'}</span>
+                <span className="font-bold font-rajdhani text-sm text-emerald-700">
+                  +৳{Math.round(Number(amount) * 0.10)} (মোট ব্যালেন্স: ৳{Number(amount) + Math.round(Number(amount) * 0.10)})
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="space-y-1">

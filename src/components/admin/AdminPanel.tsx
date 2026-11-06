@@ -86,11 +86,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { updateGameStatus, normalizeGameStatus, NormalizedGameStatus } from '../../services/gameStatusService';
 import { updateGlobalWinProbability, DEFAULT_GLOBAL_WIN_PROBABILITY } from '../../services/gameProbabilityService';
 import { saveSiteSettings, recordAdminAuditLog } from '../../services/adminConfigService';
-import SignalManagementTab from './SignalManagementTab';
 import WithdrawalsTab from './WithdrawalsTab';
 import DepositsTab from './DepositsTab';
-import AuditLogsTab from './AuditLogsTab';
-import TransactionsLedgerTab from './TransactionsLedgerTab';
+import CancelWithdrawalsTab from './CancelWithdrawalsTab';
+import CancelDepositsTab from './CancelDepositsTab';
+import PaymentSettingsTab from './PaymentSettingsTab';
 
 interface AdminPanelProps {
   user: User | null;
@@ -100,20 +100,15 @@ interface AdminPanelProps {
 
 type TabType = 
   | 'overview' 
-  | 'withdrawals'
   | 'deposits'
-  | 'transactions'
-  | 'audit_logs'
-  | 'banners' 
-  | 'home_ads' 
-  | 'games' 
-  | 'categories' 
-  | 'promotions' 
-  | 'announcements' 
-  | 'payment_methods' 
-  | 'signal_management'
+  | 'withdrawals'
+  | 'cancel_withdrawals'
+  | 'cancel_deposits'
   | 'settings' 
-  | 'users';
+  | 'payment_settings' 
+  | 'media_logos' 
+  | 'users'
+  | 'games';
 
 const PRESET_BANNERS = [
   { label: 'Bkash Bonus', url: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=1200&auto=format&fit=crop&q=80' },
@@ -295,6 +290,7 @@ function ImagePickerControl({
 export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) {
   const { lang, setLanguage, toggleLanguage, t } = useLanguage();
   const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [mediaSubTab, setMediaSubTab] = useState<'banners' | 'home_ads' | 'promotions' | 'announcements' | 'logos'>('banners');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   // Real-time Firestore States
@@ -1149,22 +1145,20 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
   const pendingWithdrawalsCount = transactions.filter(t => (t.type === 'withdraw' || t.type === 'DEMO_WITHDRAWAL') && t.status === 'pending').length;
   const pendingDepositsCount = transactions.filter(t => (t.type === 'deposit' || t.type === 'DEMO_TOPUP') && t.status === 'pending').length;
+  const cancelledWithdrawalsCount = transactions.filter(t => (t.type === 'withdraw' || t.type === 'DEMO_WITHDRAWAL') && (t.status === 'rejected' || t.status === 'cancelled')).length;
+  const cancelledDepositsCount = transactions.filter(t => (t.type === 'deposit' || t.type === 'DEMO_TOPUP') && (t.status === 'rejected' || t.status === 'cancelled')).length;
 
   const navTabs = [
-    { id: 'overview' as TabType, labelBn: 'ড্যাশবোর্ড', labelEn: 'Dashboard', icon: LayoutDashboard },
-    { id: 'withdrawals' as TabType, labelBn: 'উইথড্র রিকোয়েস্ট', labelEn: 'Withdrawals', icon: ArrowUpRight, badge: pendingWithdrawalsCount },
-    { id: 'deposits' as TabType, labelBn: 'ডিপোজিট রিকোয়েস্ট', labelEn: 'Deposits', icon: ArrowDownRight, badge: pendingDepositsCount },
-    { id: 'transactions' as TabType, labelBn: 'ট্রানজেকশন লেজার', labelEn: 'Ledger', icon: Wallet },
-    { id: 'audit_logs' as TabType, labelBn: 'অডিট লগ', labelEn: 'Audit Logs', icon: ShieldCheck },
-    { id: 'banners' as TabType, labelBn: 'ব্যানার ও কভার', labelEn: 'Banners & Cover', icon: ImageIcon },
-    { id: 'home_ads' as TabType, labelBn: 'হোম অ্যাড', labelEn: 'Home Ads', icon: Megaphone },
-    { id: 'games' as TabType, labelBn: 'গেম ও ছবি', labelEn: 'Games & Covers', icon: Gamepad2 },
-    { id: 'payment_methods' as TabType, labelBn: 'পেমেন্ট মেথড', labelEn: 'Payment Methods', icon: CreditCard },
-    { id: 'promotions' as TabType, labelBn: 'প্রমোশন অফার', labelEn: 'Promotions', icon: Gift },
-    { id: 'announcements' as TabType, labelBn: 'স্ক্রোল ঘোষণা', labelEn: 'Announcements', icon: VolumeIcon },
-    { id: 'signal_management' as TabType, labelBn: 'গেম সিগন্যাল', labelEn: 'Game Signal', icon: Radio },
-    { id: 'users' as TabType, labelBn: 'ইউজার মেম্বার', labelEn: 'Users List', icon: Users },
-    { id: 'settings' as TabType, labelBn: 'ওয়েবসাইট সেটিংস', labelEn: 'Site Settings', icon: SettingsIcon },
+    { id: 'overview' as TabType, labelBn: '১. ড্যাশবোর্ড', labelEn: '1. Dashboard', icon: LayoutDashboard },
+    { id: 'deposits' as TabType, labelBn: '২. ডিপোজিট রিকোয়েস্ট', labelEn: '2. Deposit Requests', icon: ArrowDownRight, badge: pendingDepositsCount },
+    { id: 'withdrawals' as TabType, labelBn: '৩. উইথড্র রিকোয়েস্ট', labelEn: '3. Withdrawal Requests', icon: ArrowUpRight, badge: pendingWithdrawalsCount },
+    { id: 'cancel_withdrawals' as TabType, labelBn: '৪. ক্যান্সেল রিকোয়েস্ট', labelEn: '4. Cancel Requests', icon: XCircle, badge: cancelledWithdrawalsCount },
+    { id: 'cancel_deposits' as TabType, labelBn: '৫. ক্যান্সেল ডিপোজিট', labelEn: '5. Cancel Deposit Requests', icon: AlertOctagon, badge: cancelledDepositsCount },
+    { id: 'settings' as TabType, labelBn: '৬. ওয়েবসাইট সেটিংস', labelEn: '6. Website Settings', icon: SettingsIcon },
+    { id: 'payment_settings' as TabType, labelBn: '৭. পেমেন্ট সেটিংস', labelEn: '7. Payment Settings', icon: CreditCard },
+    { id: 'media_logos' as TabType, labelBn: '৮. মিডিয়া ও লোগো', labelEn: '8. Media & Logo Settings', icon: ImageIcon },
+    { id: 'users' as TabType, labelBn: '৯. ইউজার ম্যানেজমেন্ট', labelEn: '9. User Management', icon: Users },
+    { id: 'games' as TabType, labelBn: '১০. গেম ম্যানেজমেন্ট', labelEn: '10. Game Management', icon: Gamepad2 },
   ];
 
   return (
@@ -1214,16 +1208,6 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
 
         {/* Right Header Actions */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* Aviator Signal CMS Button */}
-          <a
-            href="#signal-cms"
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-black text-xs rounded-xl shadow-md shadow-rose-600/30 active:scale-95 transition-all"
-            title="Aviator Signal CMS Controller"
-          >
-            <Radio size={14} className="animate-pulse" />
-            <span className="hidden sm:inline">Signal CMS</span>
-          </a>
-
           {/* Copy Secret Admin Link Button */}
           <button
             onClick={handleCopyAdminLink}
@@ -1623,8 +1607,124 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
             </div>
           )}
 
-          {/* TAB 2: BANNERS & COVER PHOTO MANAGEMENT */}
-          {activeTab === 'banners' && (
+          {/* TAB 8: MEDIA & LOGO SETTINGS - SUB-NAVIGATION */}
+          {activeTab === 'media_logos' && (
+            <div className="mb-4 pb-3 border-b border-slate-200">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base sm:text-lg font-black font-chakra text-slate-900 flex items-center gap-2">
+                    <ImageIcon size={20} className="text-blue-600" />
+                    <span>{lang === 'bn' ? '৮. মিডিয়া ও লোগো সেটিংস' : '8. Media & Logo Settings'}</span>
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    {lang === 'bn' ? 'ব্যানার, হোম বিজ্ঞাপন, প্রমোশন, ঘোষণা ও ওয়েবসাইটের লোগো পরিচালনা করুন।' : 'Manage hero banners, home ads, promotional cards, announcements, and site logo.'}
+                  </p>
+                </div>
+
+                {/* Sub Tab Switcher */}
+                <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl overflow-x-auto no-scrollbar">
+                  {[
+                    { id: 'banners', labelBn: 'হিরো ব্যানার', labelEn: 'Hero Banners', count: banners.length },
+                    { id: 'home_ads', labelBn: 'হোম বিজ্ঞাপন', labelEn: 'Home Ads', count: homeAds.length },
+                    { id: 'promotions', labelBn: 'প্রমোশন', labelEn: 'Promotions', count: promotions.length },
+                    { id: 'announcements', labelBn: 'ঘোষণা স্ক্রলার', labelEn: 'Notice' },
+                    { id: 'logos', labelBn: 'ওয়েবসাইট লোগো', labelEn: 'Site Logo' },
+                  ].map(st => (
+                    <button
+                      key={st.id}
+                      type="button"
+                      onClick={() => {
+                        haptics.selection();
+                        setMediaSubTab(st.id as any);
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                        mediaSubTab === st.id
+                          ? 'bg-blue-600 text-white shadow-xs font-black'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                      }`}
+                    >
+                      <span>{lang === 'bn' ? st.labelBn : st.labelEn}</span>
+                      {st.count !== undefined && (
+                        <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-mono ${mediaSubTab === st.id ? 'bg-white text-blue-600' : 'bg-slate-200 text-slate-700'}`}>
+                          {st.count}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sub-tab: Site Logo */}
+              {mediaSubTab === 'logos' && (
+                <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                    <div>
+                      <h3 className="font-chakra font-black text-sm text-slate-900">
+                        {lang === 'bn' ? 'ওয়েবসাইট হেডার লোগো কনফিগারেশন' : 'Website Header Logo Configuration'}
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        {lang === 'bn' ? 'মোবাইল গ্যালারি বা পিসি থেকে লোগো আপলোড করুন।' : 'Upload custom site logo from device or enter URL.'}
+                      </p>
+                    </div>
+                    {settings?.logoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setSettings(prev => prev ? ({ ...prev, logoUrl: '', logoStoragePath: '' }) : null)}
+                        className="text-rose-600 hover:underline text-xs font-bold"
+                      >
+                        {lang === 'bn' ? 'লোগো রিমুভ করুন' : 'Remove Custom Logo'}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-4 bg-slate-900 rounded-2xl border border-slate-800 flex flex-col items-center justify-center space-y-2">
+                      <span className="text-[10px] text-slate-400 uppercase font-chakra font-bold">ডার্ক হেডার প্রিভিউ</span>
+                      {settings?.logoUrl ? (
+                        <img src={settings.logoUrl} alt="Logo Preview" className="h-12 max-w-[180px] object-contain" />
+                      ) : (
+                        <span className="font-chakra font-black text-lg text-amber-400 tracking-wider">TK333</span>
+                      )}
+                    </div>
+                    <div className="p-4 bg-white rounded-2xl border border-slate-200 flex flex-col items-center justify-center space-y-2">
+                      <span className="text-[10px] text-slate-400 uppercase font-chakra font-bold">লাইট ব্যাকগ্রাউন্ড প্রিভিউ</span>
+                      {settings?.logoUrl ? (
+                        <img src={settings.logoUrl} alt="Logo Preview" className="h-12 max-w-[180px] object-contain" />
+                      ) : (
+                        <span className="font-chakra font-black text-lg text-slate-900 tracking-wider">TK333</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={settings?.logoUrl ?? ''}
+                      onChange={(e) => setSettings(prev => prev ? ({ ...prev, logoUrl: e.target.value }) : null)}
+                      placeholder="https://.../logo.png"
+                      className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono text-slate-900"
+                    />
+                    <label className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5 shrink-0 transition-all shadow-xs">
+                      <Upload size={13} />
+                      <span>{uploadingImage ? '...' : (lang === 'bn' ? 'গ্যালারি' : 'Upload')}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={uploadingImage}
+                        onChange={(e) => handleImageFileSelect(e, 'logos', (url, path) => {
+                          setSettings(prev => prev ? ({ ...prev, logoUrl: url, logoStoragePath: path }) : null);
+                        })}
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* SUB-TAB: BANNERS */}
+          {activeTab === 'media_logos' && mediaSubTab === 'banners' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div>
@@ -1817,8 +1917,8 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
             </div>
           )}
 
-          {/* TAB 3: HOME ADS MANAGEMENT */}
-          {activeTab === 'home_ads' && (
+          {/* SUB-TAB: HOME ADS */}
+          {activeTab === 'media_logos' && mediaSubTab === 'home_ads' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div>
@@ -2769,8 +2869,8 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
             </div>
           )}
 
-          {/* TAB 5: PAYMENT METHODS DISPLAY SETTINGS */}
-          {activeTab === 'payment_methods' && (
+          {/* OBSOLETE PAYMENT METHODS (Migrated to PaymentSettingsTab) */}
+          {false && (
             <div className="space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div>
@@ -2972,8 +3072,8 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
             </div>
           )}
 
-          {/* TAB 6: PROMOTIONS */}
-          {activeTab === 'promotions' && (
+          {/* SUB-TAB: PROMOTIONS */}
+          {activeTab === 'media_logos' && mediaSubTab === 'promotions' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div>
@@ -3164,8 +3264,8 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
             </div>
           )}
 
-          {/* TAB 7: ANNOUNCEMENTS */}
-          {activeTab === 'announcements' && (
+          {/* SUB-TAB: ANNOUNCEMENTS */}
+          {activeTab === 'media_logos' && mediaSubTab === 'announcements' && (
             <div className="space-y-4 max-w-lg">
               <div className="pb-3 border-b border-slate-100">
                 <h2 className="text-base sm:text-lg font-black font-chakra text-slate-900">
@@ -3229,18 +3329,36 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
             />
           )}
 
-          {/* TAB: TRANSACTIONS LEDGER */}
-          {activeTab === 'transactions' && (
-            <TransactionsLedgerTab
+          {/* TAB 4: CANCEL WITHDRAWALS */}
+          {activeTab === 'cancel_withdrawals' && (
+            <CancelWithdrawalsTab
               transactions={transactions}
               lang={lang}
+              adminEmail={user?.email || 'admin@tk333.vip'}
+              showToast={showToast}
             />
           )}
 
-          {/* TAB: AUDIT LOGS */}
-          {activeTab === 'audit_logs' && (
-            <AuditLogsTab
+          {/* TAB 5: CANCEL DEPOSITS */}
+          {activeTab === 'cancel_deposits' && (
+            <CancelDepositsTab
+              transactions={transactions}
               lang={lang}
+              adminEmail={user?.email || 'admin@tk333.vip'}
+              showToast={showToast}
+            />
+          )}
+
+          {/* TAB 7: PAYMENT SETTINGS */}
+          {activeTab === 'payment_settings' && (
+            <PaymentSettingsTab
+              settings={settings}
+              setSettings={setSettings}
+              lang={lang}
+              adminEmail={user?.email || 'admin@tk333.vip'}
+              showToast={showToast}
+              handleImageFileSelect={handleImageFileSelect}
+              uploadingImage={uploadingImage}
             />
           )}
 
@@ -3820,14 +3938,7 @@ export default function AdminPanel({ user, userData, onBack }: AdminPanelProps) 
             </form>
           )}
 
-          {/* TAB 11: SIGNAL MANAGEMENT & CUSTOMER ACCESS */}
-          {activeTab === 'signal_management' && (
-            <SignalManagementTab 
-              lang={lang} 
-              showToast={showToast} 
-              registeredUsers={usersList.map(u => ({ uid: u.uid, name: u.name, username: u.username, phone: u.phone }))}
-            />
-          )}
+
         </main>
       </div>
     </div>

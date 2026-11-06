@@ -290,6 +290,26 @@ export default function App() {
   const handleNavigate = (page: string) => {
     haptics.selection();
     const targetPage = page as Page;
+
+    // Protected pages require authentication
+    const protectedPages: Page[] = [
+      'member', 
+      'profile',
+      'transactions', 
+      'history', 
+      'aviator-jet', 
+      'pokie-super-ace', 
+      'boxer-king', 
+      'mines', 
+      'roulette', 
+      'coinflip'
+    ];
+
+    if (!user && protectedPages.includes(targetPage)) {
+      handleOpenAuth('login');
+      return;
+    }
+
     setCurrentPage(targetPage);
     
     // Update browser URL smoothly without reloading
@@ -301,6 +321,12 @@ export default function App() {
   const handleLaunchGame = (game: GameItem) => {
     haptics.medium();
     setShowSearchModal(false);
+
+    // Require login before launching any real game
+    if (!user) {
+      handleOpenAuth('login');
+      return;
+    }
     
     // Match interactive game IDs
     const title = (game.title || game.titleBn || '').toLowerCase();
@@ -321,6 +347,31 @@ export default function App() {
       handleNavigate('pokie-super-ace');
     }
   };
+
+  // Fullscreen Interactive Games detector
+  const isFullscreenGame = 
+    currentPage === 'game' || 
+    currentPage === 'boxer-king' || 
+    currentPage === 'pokie-super-ace' || 
+    currentPage === 'aviator-jet' ||
+    currentPage === 'mines' ||
+    currentPage === 'roulette' ||
+    currentPage === 'coinflip';
+
+  // Background Scroll Locking when fullscreen game or modal is open
+  useEffect(() => {
+    if (isFullscreenGame || showAuth || showSearchModal) {
+      document.body.style.overflow = 'hidden';
+      document.documentElement.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, [isFullscreenGame, showAuth, showSearchModal]);
 
   if (loading) {
     return (
@@ -362,16 +413,6 @@ export default function App() {
       </div>
     );
   }
-
-  // Fullscreen Interactive Games
-  const isFullscreenGame = 
-    currentPage === 'game' || 
-    currentPage === 'boxer-king' || 
-    currentPage === 'pokie-super-ace' || 
-    currentPage === 'aviator-jet' ||
-    currentPage === 'mines' ||
-    currentPage === 'roulette' ||
-    currentPage === 'coinflip';
 
   if (isFullscreenGame) {
     return (

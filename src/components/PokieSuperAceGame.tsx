@@ -706,9 +706,9 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
     }
 
     if (pureWildConsecutive >= 3) {
-      // 3 of kind: 0.3x, 4 of kind: 0.8x, 5 of kind: 2.5x base scale of top symbol
-      const payScale = pureWildConsecutive === 3 ? 0.3 : (pureWildConsecutive === 4 ? 0.8 : 2.5);
-      const pureWildBaseWin = (5.0 * payScale * pureWildWays * currentBet) / 10;
+      // Authentic Jili Super Ace pay scale
+      const payScale = pureWildConsecutive === 3 ? 0.25 : (pureWildConsecutive === 4 ? 0.6 : 1.8);
+      const pureWildBaseWin = (4.0 * payScale * Math.min(pureWildWays, 4) * currentBet) / 25;
       const pureWildLineWin = pureWildBaseWin * multiplier;
       totalWin += pureWildLineWin;
       totalWays += pureWildWays;
@@ -760,8 +760,8 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
 
       // Valid regular win: consecutive >= 3 and has at least one actual symbol instance
       if (consecutive >= 3 && actualSymbolCount > 0) {
-        const payScale = consecutive === 3 ? 0.2 : (consecutive === 4 ? 0.5 : 1.0);
-        const lineBaseWin = (symbol.value * payScale * ways * currentBet) / 10;
+        const payScale = consecutive === 3 ? 0.15 : (consecutive === 4 ? 0.4 : 1.0);
+        const lineBaseWin = (symbol.value * payScale * Math.min(ways, 4) * currentBet) / 25;
         const lineWin = lineBaseWin * multiplier;
         totalWin += lineWin;
         totalWays += ways;
@@ -815,7 +815,7 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       }
       
       // 2. Clear, highlight for player feedback
-      await new Promise(resolve => setTimeout(resolve, 1200));
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       setIsScatterTriggering(false);
       // 3. Clear highlights and show the celebration modal
@@ -837,7 +837,7 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
   }, [playSound]);
 
   const handleCascade = useCallback(async (currentGrid: SymbolInstance[][], multiplierIdx: number, currentCombo: number, accumulatedWin: number = 0): Promise<void> => {
-    if (currentCombo >= 10) {
+    if (currentCombo >= 8) {
       setIsProcessing(false);
       return;
     }
@@ -865,8 +865,8 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
           haptics.light();
         }
         
-        // 1. Snappy burst animation
-        await new Promise(resolve => setTimeout(resolve, turbo ? 140 : 240));
+        // 1. Brief pause to display winning combo highlights
+        await new Promise(resolve => setTimeout(resolve, turbo ? 100 : 200));
         
         setWinAmount(prev => prev + totalWin);
         if (isFS) {
@@ -899,16 +899,17 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
         setLastWin(totalWin);
         setCombo(currentCombo + 1);
         
-        // 2. Prepare the new grid (remove winning symbols)
+        // 2. SEQUENTIAL CARD BREAKING ANIMATION (Card 1 -> Card 2 -> Card 3)
         const newGrid = currentGrid.map(col => col ? [...col] : []);
         const extraWildPositions: { col: number; row: number }[] = [];
 
-        winningPositions.forEach(({ col, row }) => {
+        for (let i = 0; i < winningPositions.length; i++) {
+          const { col, row } = winningPositions[i];
           if (newGrid[col] && newGrid[col][row]) {
             const sym = newGrid[col][row];
             if (sym && sym.isGolden) {
               // Convert Golden Symbol to Joker Wild
-              const isBigJoker = Math.random() < 0.25;
+              const isBigJoker = Math.random() < 0.20;
               newGrid[col][row] = {
                 id: Math.random().toString(36).substr(2, 9),
                 symbolId: 10,
@@ -919,7 +920,6 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
                 isRevealed: true
               };
 
-              // Big Joker: converts at most ONE adjacent card on the same column to Wild (prevents 256-way exponential runaway)
               if (isBigJoker) {
                 const adjRow = row > 0 ? row - 1 : (row < ROWS - 1 ? row + 1 : -1);
                 if (adjRow >= 0) {
@@ -929,8 +929,13 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
             } else {
               newGrid[col][row] = null as any;
             }
+
+            // Sequential break audio and visual stagger
+            playSound(SOUNDS.BURST, 0.25);
+            setGrid(newGrid.map(c => [...c]));
+            await new Promise(resolve => setTimeout(resolve, turbo ? 25 : 55));
           }
-        });
+        }
 
         // Apply Big Joker adjacent wild
         extraWildPositions.forEach(({ col, row }) => {
@@ -947,12 +952,12 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
           }
         });
 
-        // 3. Clear winning positions and update grid simultaneously
+        // 3. Clear winning highlights
         setWinningPositions([]);
         setGrid(newGrid.map(col => [...col]));
         
-        // 4. Quick settle wait
-        await new Promise(resolve => setTimeout(resolve, turbo ? 100 : 180));
+        // 4. Quick settle wait before cascading drops
+        await new Promise(resolve => setTimeout(resolve, turbo ? 60 : 120));
 
         let totalScattersOnGrid = 0;
         newGrid.forEach(col => col && col.forEach(sym => {
@@ -1178,12 +1183,12 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       setGrid(newGrid);
       setTotalSpins(prev => prev + 1);
 
-      await new Promise(resolve => setTimeout(resolve, turbo ? 160 : 320));
+      await new Promise(resolve => setTimeout(resolve, turbo ? 90 : 260));
       setIsSpinning(false);
 
       const hasUnrevealedMystery = newGrid.some(col => col.some(sym => sym.isMystery && !sym.isRevealed));
       if (hasUnrevealedMystery) {
-        await new Promise(resolve => setTimeout(resolve, 250));
+        await new Promise(resolve => setTimeout(resolve, turbo ? 100 : 200));
         const revealedGrid = newGrid.map((col, colIdx) => col.map(sym => {
           if (sym.isMystery && !sym.isRevealed) {
             return { 
@@ -1197,18 +1202,18 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
         setGrid(revealedGrid);
         
         confetti({
-          particleCount: 50,
-          spread: 70,
+          particleCount: 40,
+          spread: 60,
           origin: { y: 0.6 },
           colors: ['#FFD700', '#FFFFFF', '#FFA500']
         });
         
-        await new Promise(resolve => setTimeout(resolve, 400));
+        await new Promise(resolve => setTimeout(resolve, turbo ? 120 : 250));
         newGrid = revealedGrid.map(col => col.map(sym => ({ ...sym, isMysteryWin: false })));
         setGrid(newGrid);
       }
 
-      await new Promise(resolve => setTimeout(resolve, turbo ? 80 : 160));
+      await new Promise(resolve => setTimeout(resolve, turbo ? 40 : 100));
       await handleCascade(newGrid, 0, 0);
 
     } catch (error) {
@@ -1219,6 +1224,18 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
       setTeaseScatter(false);
     }
   }, [turbo, playSound, getRandomSymbol, handleCascade]);
+
+  // Tap anywhere on canvas/screen to spin (ignoring interactive buttons/inputs)
+  const handleScreenTapToSpin = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (!target) return;
+    if (target.closest('button') || target.closest('input') || target.closest('.no-tap-spin') || target.closest('[role="dialog"]')) {
+      return;
+    }
+    if (!isSpinning && !isProcessing && !isLoading && !showStartScreen && !isBuyBonusModalOpen && !isBetModalOpen) {
+      spin();
+    }
+  }, [isSpinning, isProcessing, isLoading, showStartScreen, isBuyBonusModalOpen, isBetModalOpen, spin]);
 
   useEffect(() => {
     spinRef.current = spin;
@@ -1479,8 +1496,12 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
           </div>
         </div>
 
-        {/* Slot Grid Container */}
-        <div className="relative w-full flex-1 flex items-center justify-center min-h-0">
+        {/* Slot Grid Container - Tap Anywhere to Spin */}
+        <div 
+          onClick={handleScreenTapToSpin}
+          className="relative w-full flex-1 flex items-center justify-center min-h-0 cursor-pointer active:scale-[0.99] transition-transform"
+          title="Tap anywhere to spin"
+        >
           {/* Combo Text Overlay */}
           <AnimatePresence>
             {combo > 0 && !isSpinning && (

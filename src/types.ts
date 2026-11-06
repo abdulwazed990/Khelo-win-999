@@ -308,6 +308,12 @@ export interface SiteSettings {
   depositNagadNumbers?: string[]; // Up to 10 Nagad numbers for shuffle/rotation
   depositRocketNumbers?: string[];
   depositUpayNumbers?: string[];
+  bkashLogoUrl?: string; // Admin-uploaded bKash logo
+  bkashLogoStoragePath?: string;
+  nagadLogoUrl?: string; // Admin-uploaded Nagad logo
+  nagadLogoStoragePath?: string;
+  minDepositAmount?: number; // Minimum deposit limit (default 300)
+  depositBonusPercent?: number; // Deposit bonus percentage (default 10%)
   adminPanelHidden?: boolean; // Controls whether admin entry is hidden from the public website
   signalAppUrl?: string; // Private authoritative Signal App URL
   configVersion?: number;

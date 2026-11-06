@@ -542,9 +542,9 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
   }, [isAuto, isSpinning, balance, bet, freeSpins, handleSpin]);
 
   return (
-    <div className="min-h-[100dvh] bg-[#070b14] text-white font-sans flex flex-col max-w-4xl mx-auto border-x border-slate-800 select-none shadow-2xl overflow-x-hidden">
+    <div className="h-[100dvh] max-h-[100dvh] bg-[#070b14] text-white font-sans flex flex-col max-w-4xl mx-auto border-x border-slate-800 select-none shadow-2xl overflow-hidden">
       {/* 1. Header Bar */}
-      <header className="px-3 sm:px-6 py-2.5 bg-[#0b1120] border-b border-slate-800 flex items-center justify-between sticky top-0 z-40">
+      <header className="px-3 sm:px-6 py-2 bg-[#0b1120] border-b border-slate-800 flex items-center justify-between sticky top-0 z-40 shrink-0">
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
@@ -556,7 +556,7 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
 
           <div className="flex items-center gap-2 bg-gradient-to-r from-amber-500/20 via-rose-500/10 to-amber-500/20 border border-amber-500/40 px-3 py-1 rounded-xl">
             <Flame size={15} className="text-rose-500 animate-bounce" />
-            <span className="font-chakra font-black text-sm tracking-wider bg-gradient-to-r from-amber-300 via-rose-400 to-amber-300 bg-clip-text text-transparent uppercase">
+            <span className="font-chakra font-black text-xs sm:text-sm tracking-wider bg-gradient-to-r from-amber-300 via-rose-400 to-amber-300 bg-clip-text text-transparent uppercase">
               TK333 BOXER KING
             </span>
           </div>
@@ -564,23 +564,15 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
 
         <div className="flex items-center gap-2 sm:gap-3">
           <button
-            onClick={() => setShowPaytable(true)}
-            className="p-2 bg-slate-800/80 hover:bg-slate-700 rounded-xl text-slate-300 border border-slate-700 active:scale-95 transition-all"
-            title="Paytable & Rules"
-          >
-            <Info size={16} />
-          </button>
-
-          <button
             onClick={() => setIsSoundEnabled(!isSoundEnabled)}
-            className="p-2 bg-slate-800/80 hover:bg-slate-700 rounded-xl text-slate-300 border border-slate-700 active:scale-95 transition-all"
+            className="p-1.5 sm:p-2 bg-slate-800/80 hover:bg-slate-700 rounded-xl text-slate-300 border border-slate-700 active:scale-95 transition-all"
           >
             {isSoundEnabled ? <Volume2 size={16} className="text-emerald-400" /> : <VolumeX size={16} className="text-rose-400" />}
           </button>
 
-          <div className="flex items-center gap-2 bg-gradient-to-r from-slate-900 to-[#0e172a] px-3.5 py-1.5 rounded-xl border border-emerald-500/40">
-            <span className="text-[10px] uppercase font-mono font-bold text-slate-400">Balance</span>
-            <span className="font-rajdhani font-black text-emerald-400 text-base sm:text-lg">
+          <div className="flex items-center gap-1.5 sm:gap-2 bg-gradient-to-r from-slate-900 to-[#0e172a] px-3 py-1 sm:py-1.5 rounded-xl border border-emerald-500/40">
+            <span className="text-[9px] sm:text-[10px] uppercase font-mono font-bold text-slate-400">Balance</span>
+            <span className="font-rajdhani font-black text-emerald-400 text-sm sm:text-lg">
               {formatBDT(balance)}
             </span>
           </div>
@@ -588,13 +580,13 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
       </header>
 
       {/* 2. Top Combo Multiplier Championship Bar (1x -> 2x -> 3x -> 5x) */}
-      <div className="bg-[#090e1a] px-4 py-2 border-b border-slate-800 flex items-center justify-between text-xs">
-        <span className="text-[10px] font-chakra font-black text-amber-400 uppercase tracking-widest flex items-center gap-1">
-          <Award size={14} className="text-amber-400" />
-          COMBO STRIKE MULTIPLIER:
+      <div className="bg-[#090e1a] px-3 py-1.5 border-b border-slate-800 flex items-center justify-between text-xs shrink-0">
+        <span className="text-[9px] sm:text-[10px] font-chakra font-black text-amber-400 uppercase tracking-widest flex items-center gap-1">
+          <Award size={13} className="text-amber-400" />
+          COMBO MULTIPLIER:
         </span>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {[1, 2, 3, 5].map(m => (
             <span
               key={m}
@@ -611,25 +603,25 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
       </div>
 
       {/* 3. Slot Machine Reels Arena */}
-      <div className="flex-1 p-2 sm:p-6 flex flex-col items-center justify-center space-y-3 sm:space-y-4">
+      <div className="flex-1 p-1.5 sm:p-4 flex flex-col items-center justify-between min-h-0 overflow-hidden space-y-1.5 sm:space-y-3">
         {/* Championship Boxing Ring Frame */}
-        <div className="w-full max-w-xl bg-gradient-to-b from-[#1e1124] via-[#0f0b18] to-[#08050e] p-2 sm:p-4 rounded-3xl border-2 sm:border-4 border-amber-500/60 shadow-[0_0_50px_rgba(245,158,11,0.2)] relative">
+        <div className="w-full max-w-xl bg-gradient-to-b from-[#1e1124] via-[#0f0b18] to-[#08050e] p-1.5 sm:p-3 rounded-2xl sm:rounded-3xl border-2 sm:border-4 border-amber-500/60 shadow-[0_0_40px_rgba(245,158,11,0.2)] relative">
           {/* Top Championship Belt Plaque & Free Spins Badge */}
-          <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 flex items-center gap-2 z-30">
-            <div className="bg-gradient-to-r from-amber-600 via-yellow-400 to-amber-600 px-4 py-0.5 rounded-full border border-amber-200 text-black font-chakra font-black text-[10px] tracking-widest uppercase shadow-md flex items-center gap-1">
-              <Trophy size={12} />
+          <div className="absolute -top-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-30">
+            <div className="bg-gradient-to-r from-amber-600 via-yellow-400 to-amber-600 px-3 py-0.5 rounded-full border border-amber-200 text-black font-chakra font-black text-[9px] sm:text-[10px] tracking-widest uppercase shadow-md flex items-center gap-1">
+              <Trophy size={11} />
               WBC WORLD TITLE REELS
             </div>
             {freeSpins > 0 && (
-              <div className="bg-gradient-to-r from-rose-600 to-red-600 text-white px-3 py-0.5 rounded-full border border-rose-300 font-chakra font-black text-[10px] tracking-wider uppercase shadow-[0_0_12px_#ef4444] animate-pulse flex items-center gap-1">
-                <Flame size={12} />
-                FREE SPINS: {freeSpins}
+              <div className="bg-gradient-to-r from-rose-600 to-red-600 text-white px-2.5 py-0.5 rounded-full border border-rose-300 font-chakra font-black text-[9px] sm:text-[10px] tracking-wider uppercase shadow-[0_0_12px_#ef4444] animate-pulse flex items-center gap-1">
+                <Flame size={11} />
+                FREE: {freeSpins}
               </div>
             )}
           </div>
 
           {/* 5x3 Reels Grid */}
-          <div className="grid grid-cols-5 gap-1 bg-black rounded-2xl overflow-hidden border border-zinc-800 p-1 h-[200px] sm:h-[220px]">
+          <div className="grid grid-cols-5 gap-1 bg-black rounded-xl sm:rounded-2xl overflow-hidden border border-zinc-800 p-0.5 sm:p-1 h-[155px] sm:h-[195px]">
             {reels.map((_, colIndex) => (
               <Reel 
                 key={colIndex}
@@ -648,17 +640,17 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
         <AnimatePresence>
           {winBreakdown.length > 0 && !isSpinning && (
             <motion.div
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
-              className="w-full max-w-xl flex items-center justify-center gap-1.5 flex-wrap px-1"
+              className="w-full max-w-xl flex items-center justify-center gap-1 flex-wrap px-1"
             >
               {winBreakdown.map((item, idx) => (
                 <div
                   key={idx}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-950/90 border border-amber-500/50 text-[11px] font-black text-amber-300 shadow-md backdrop-blur-sm"
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-950/90 border border-amber-500/50 text-[10px] font-black text-amber-300 shadow-md backdrop-blur-sm"
                 >
-                  <Sparkles size={12} className="text-amber-400" />
+                  <Sparkles size={11} className="text-amber-400" />
                   <span className="text-white">{item.lineName}:</span>
                   <span>{item.matches}x {item.symName}</span>
                   <span className="text-emerald-400 font-mono">+{formatBDT(item.win)}</span>
@@ -669,40 +661,40 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
         </AnimatePresence>
 
         {/* Win Telemetry Bar */}
-        <div className="w-full max-w-xl bg-slate-900/90 rounded-2xl border border-slate-800 p-3 flex items-center justify-between">
+        <div className="w-full max-w-xl bg-slate-900/90 rounded-xl sm:rounded-2xl border border-slate-800 px-3 py-1.5 sm:py-2 flex items-center justify-between">
           <div>
-            <span className="text-[10px] font-chakra font-black text-slate-400 uppercase block">Active Bet</span>
-            <span className="font-rajdhani font-black text-white text-lg">৳{bet}</span>
+            <span className="text-[9px] font-chakra font-black text-slate-400 uppercase block leading-tight">Active Bet</span>
+            <span className="font-rajdhani font-black text-white text-base sm:text-lg leading-tight">৳{bet}</span>
           </div>
 
           <div className="text-center">
             {winAmount > 0 ? (
               <div className="animate-pulse">
-                <span className="text-[10px] font-chakra font-black text-emerald-400 uppercase block">KO VICTORY WIN</span>
-                <span className="font-rajdhani font-black text-emerald-300 text-2xl">+{formatBDT(winAmount)}</span>
+                <span className="text-[9px] font-chakra font-black text-emerald-400 uppercase block leading-tight">KO VICTORY WIN</span>
+                <span className="font-rajdhani font-black text-emerald-300 text-lg sm:text-2xl leading-tight">+{formatBDT(winAmount)}</span>
               </div>
             ) : (
               <div>
-                <span className="text-[10px] font-chakra font-black text-slate-500 uppercase block">Ready for KO</span>
-                <span className="text-xs font-mono text-slate-400">5 Reels • 243 Ways</span>
+                <span className="text-[9px] font-chakra font-black text-slate-500 uppercase block leading-tight">Ready for KO</span>
+                <span className="text-[10px] sm:text-xs font-mono text-slate-400">5 Reels • 243 Ways</span>
               </div>
             )}
           </div>
 
           <div className="text-right">
-            <span className="text-[10px] font-chakra font-black text-slate-400 uppercase block">Free Spins</span>
-            <span className="font-rajdhani font-black text-amber-400 text-lg">{freeSpins}</span>
+            <span className="text-[9px] font-chakra font-black text-slate-400 uppercase block leading-tight">Free Spins</span>
+            <span className="font-rajdhani font-black text-amber-400 text-base sm:text-lg leading-tight">{freeSpins}</span>
           </div>
         </div>
 
         {/* 4. Betting Panel & Spin Controls */}
-        <div className="w-full max-w-xl bg-[#0f172a] rounded-3xl border border-slate-800 p-3 sm:p-5 space-y-4 shadow-xl">
+        <div className="w-full max-w-xl bg-[#0f172a] rounded-2xl sm:rounded-3xl border border-slate-800 p-2 sm:p-3.5 space-y-2 sm:space-y-3 shadow-xl shrink-0">
           {/* Quick Bet Chips */}
-          <div className="space-y-1.5">
-            <span className="text-[10px] font-chakra font-black text-slate-400 uppercase tracking-wider block">
+          <div className="space-y-1">
+            <span className="text-[9px] sm:text-[10px] font-chakra font-black text-slate-400 uppercase tracking-wider block">
               QUICK BET SELECTION:
             </span>
-            <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-1">
               {BET_VALUES.map(val => (
                 <button
                   key={val}
@@ -711,9 +703,9 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
                     haptics.selection();
                     setBet(val);
                   }}
-                  className={`py-1.5 rounded-xl font-rajdhani font-black text-xs border transition-all ${
+                  className={`py-1 rounded-lg font-rajdhani font-black text-[11px] sm:text-xs border transition-all ${
                     bet === val
-                      ? 'bg-amber-500 text-black border-amber-300 shadow-[0_0_10px_#fbbf24] scale-105'
+                      ? 'bg-amber-500 text-black border-amber-300 shadow-[0_0_8px_#fbbf24] scale-105'
                       : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700'
                   }`}
                 >
@@ -724,37 +716,37 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
           </div>
 
           {/* Action Row: Turbo, Spin, Auto */}
-          <div className="flex items-center justify-between gap-3 pt-1 border-t border-slate-800">
+          <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800">
             {/* Turbo Toggle */}
             <button
               onClick={() => {
                 haptics.selection();
                 setIsTurbo(!isTurbo);
               }}
-              className={`p-3 rounded-2xl border flex items-center gap-1.5 transition-all ${
+              className={`p-2 sm:p-2.5 rounded-xl border flex items-center gap-1 transition-all ${
                 isTurbo
-                  ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.4)]'
+                  ? 'bg-amber-500/20 border-amber-400 text-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.4)]'
                   : 'bg-slate-800 border-slate-700 text-slate-400'
               }`}
             >
-              <Zap size={18} className={isTurbo ? 'fill-amber-400 text-amber-400' : ''} />
-              <span className="text-xs font-chakra font-black uppercase hidden sm:inline">TURBO</span>
+              <Zap size={16} className={isTurbo ? 'fill-amber-400 text-amber-400' : ''} />
+              <span className="text-[10px] sm:text-xs font-chakra font-black uppercase hidden sm:inline">TURBO</span>
             </button>
 
             {/* Huge Primary Spin Button */}
             <motion.button
-              whileTap={{ scale: 0.95 }}
+              whileTap={{ scale: 0.96 }}
               onClick={handleSpin}
               disabled={isSpinning}
-              className={`flex-1 py-4 rounded-2xl font-chakra font-black text-lg uppercase tracking-wider shadow-2xl flex items-center justify-center gap-2 transition-all ${
+              className={`flex-1 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-chakra font-black text-sm sm:text-base uppercase tracking-wider shadow-2xl flex items-center justify-center gap-2 transition-all min-h-[48px] sm:min-h-[54px] ${
                 isSpinning
                   ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-rose-600 via-red-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-[0_0_30px_rgba(225,29,72,0.5)] cursor-pointer active:scale-98'
+                  : 'bg-gradient-to-r from-rose-600 via-red-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white shadow-[0_0_25px_rgba(225,29,72,0.5)] cursor-pointer active:scale-98'
               }`}
             >
               {isSpinning ? (
                 <div className="flex items-center gap-2">
-                  <RotateCcw size={20} className="animate-spin" />
+                  <RotateCcw size={18} className="animate-spin" />
                   <span>SPINNING...</span>
                 </div>
               ) : (
@@ -768,14 +760,14 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
                 haptics.selection();
                 setIsAuto(!isAuto);
               }}
-              className={`p-3 rounded-2xl border flex items-center gap-1.5 transition-all ${
+              className={`p-2 sm:p-2.5 rounded-xl border flex items-center gap-1 transition-all ${
                 isAuto
-                  ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.4)]'
+                  ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.4)]'
                   : 'bg-slate-800 border-slate-700 text-slate-400'
               }`}
             >
-              <RotateCcw size={18} className={isAuto ? 'animate-spin text-emerald-400' : ''} />
-              <span className="text-xs font-chakra font-black uppercase hidden sm:inline">AUTO</span>
+              <RotateCcw size={16} className={isAuto ? 'animate-spin text-emerald-400' : ''} />
+              <span className="text-[10px] sm:text-xs font-chakra font-black uppercase hidden sm:inline">AUTO</span>
             </button>
           </div>
         </div>
