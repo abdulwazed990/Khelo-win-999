@@ -799,12 +799,10 @@ export default function Home({
           </span>
         </div>
 
-        <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           {[
             { name: 'bKash', color: 'bg-[#D12053]/10 text-[#D12053] border-[#D12053]/30' },
             { name: 'Nagad', color: 'bg-[#E31B23]/10 text-[#E31B23] border-[#E31B23]/30' },
-            { name: 'Rocket', color: 'bg-[#8A257D]/10 text-[#8A257D] border-[#8A257D]/30' },
-            { name: 'Upay', color: 'bg-[#005BAC]/10 text-[#005BAC] border-[#005BAC]/30' },
             { name: 'USDT (TRC20)', color: 'bg-emerald-500/10 text-emerald-700 border-emerald-300' }
           ].map((pm, idx) => (
             <div key={idx} className={`py-2 px-1 rounded-xl text-center font-chakra font-black text-[10px] sm:text-xs border ${pm.color} flex items-center justify-center`}>
@@ -860,8 +858,17 @@ export default function Home({
           </span>
         </div>
 
-        <div className="text-[10px] font-mono text-slate-400">
-          © {new Date().getFullYear()} {settings?.brandName || 'TK333'}. All rights reserved.
+        {/* Secret Admin Entry via 2026 TK 33 Link */}
+        <div 
+          onClick={() => {
+            haptics.selection();
+            window.location.hash = 'admin';
+            setCurrentPage('admin');
+          }}
+          className="text-[11px] font-mono text-slate-400 hover:text-slate-700 cursor-pointer select-none transition-colors py-1 inline-block"
+          title="2026 TK 33"
+        >
+          2026 TK 33 All Rights Reserved.
         </div>
       </footer>
 

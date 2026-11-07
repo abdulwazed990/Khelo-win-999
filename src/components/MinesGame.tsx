@@ -309,9 +309,9 @@ export default function MinesGame({ user, userData, onBack }: MinesGameProps) {
       </div>
 
       {/* 3. Main Body: Tactical Control Left & 5x5 Grid Right */}
-      <div className="flex-1 p-3 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 bg-[#070b14] items-start">
-        {/* Left Column: Command & Bet Station (lg:col-span-4) */}
-        <div className="lg:col-span-5 bg-[#0f172a] rounded-2xl border border-slate-800 p-4 sm:p-5 space-y-4 shadow-xl">
+      <div className="flex-1 p-2 sm:p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-3 sm:gap-6 bg-[#070b14] items-center w-full max-w-5xl mx-auto overflow-y-auto">
+        {/* Command & Bet Station (lg:col-span-5) */}
+        <div className="lg:col-span-5 bg-[#0f172a] rounded-2xl border border-slate-800 p-3 sm:p-4 space-y-2.5 sm:space-y-3.5 shadow-xl">
           {/* Mine Selector */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs font-chakra font-black text-slate-300">
@@ -460,9 +460,9 @@ export default function MinesGame({ user, userData, onBack }: MinesGameProps) {
           </div>
         </div>
 
-        {/* Right Column: 5x5 Heavy Vault Grid (lg:col-span-7) */}
-        <div className="lg:col-span-7 flex flex-col items-center justify-center w-full">
-          <div className="w-full max-w-[340px] sm:max-w-[440px] aspect-square bg-[#0b1120] p-2.5 sm:p-4 rounded-3xl border-2 border-slate-800 shadow-[0_0_40px_rgba(0,0,0,0.8)] relative mx-auto">
+        {/* 5x5 Heavy Vault Grid (order-first on mobile so player sees board immediately) */}
+        <div className="order-first lg:order-last lg:col-span-7 flex flex-col items-center justify-center w-full">
+          <div className="w-full max-w-[280px] sm:max-w-[360px] lg:max-w-[420px] aspect-square bg-[#0b1120] p-2 sm:p-3.5 rounded-2xl sm:rounded-3xl border-2 border-slate-800 shadow-[0_0_40px_rgba(0,0,0,0.8)] relative mx-auto">
             {/* Corner Decorative Rivets */}
             <div className="absolute top-2 left-2 w-2 h-2 rounded-full bg-slate-700" />
             <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-slate-700" />

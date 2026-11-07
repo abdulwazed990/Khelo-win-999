@@ -130,13 +130,19 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
         const user = userCredential.user;
         await updateProfile(user, { displayName: name || cleanUsername });
 
+        const alreadyClaimed = typeof window !== 'undefined' && localStorage.getItem(`tk333_bonus_claimed_${user.uid}`) === 'true';
+        const initialBalance = alreadyClaimed ? 0 : 10;
+        try {
+          localStorage.setItem(`tk333_bonus_claimed_${user.uid}`, 'true');
+        } catch (e) {}
+
         const userDataObj = {
           uid: user.uid,
           name: name || cleanUsername,
           username: cleanUsername,
           phone: contactType === 'phone' ? contact.trim() : '',
           email: user.email,
-          balance: 10,
+          balance: initialBalance,
           welcomeBonusClaimed: true,
           lastDailyBonusAt: '',
           freeSpins: 0,
@@ -216,6 +222,11 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
           .toLowerCase();
         const generatedUsername = emailPrefix.length >= 3 ? emailPrefix : `user_${user.uid.slice(0, 5).toLowerCase()}`;
         const isAdminUser = user.email === 'mohammadabdulwazed1@gmail.com';
+        const alreadyClaimed = typeof window !== 'undefined' && localStorage.getItem(`tk333_bonus_claimed_${user.uid}`) === 'true';
+        const initialBalance = alreadyClaimed ? 0 : 10;
+        try {
+          localStorage.setItem(`tk333_bonus_claimed_${user.uid}`, 'true');
+        } catch (e) {}
 
         const newProfile = {
           uid: user.uid,
@@ -223,7 +234,7 @@ export default function Auth({ onSuccess, initialMode = 'login' }: AuthProps) {
           username: generatedUsername,
           email: user.email,
           phone: user.phoneNumber || '',
-          balance: 10,
+          balance: initialBalance,
           welcomeBonusClaimed: true,
           freeSpins: 0,
           role: isAdminUser ? 'admin' : 'user',

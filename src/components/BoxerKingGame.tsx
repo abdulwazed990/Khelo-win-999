@@ -18,7 +18,8 @@ import {
   Crown,
   Sparkles,
   Award,
-  X
+  X,
+  AlertCircle
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -291,6 +292,7 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
   const [isSoundEnabled, setIsSoundEnabled] = useState(true);
   const [showBigWin, setShowBigWin] = useState(false);
   const [showPaytable, setShowPaytable] = useState(false);
+  const [showInsufficientBalance, setShowInsufficientBalance] = useState(false);
   const [winBreakdown, setWinBreakdown] = useState<{ lineName: string; symName: string; matches: number; win: number }[]>([]);
 
   const [reels, setReels] = useState<SymbolType[][]>(Array(REEL_COUNT).fill(null).map(() => Array(ROW_COUNT).fill(SYMBOLS[0])));
@@ -310,7 +312,7 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
     if (isSpinning) return;
     if (balance < bet && freeSpins === 0) {
       haptics.error();
-      alert('Insufficient balance to spin!');
+      setShowInsufficientBalance(true);
       return;
     }
 
@@ -621,7 +623,16 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
           </div>
 
           {/* 5x3 Reels Grid */}
-          <div className="grid grid-cols-5 gap-1 bg-black rounded-xl sm:rounded-2xl overflow-hidden border border-zinc-800 p-0.5 sm:p-1 h-[155px] sm:h-[195px]">
+          <div 
+            onClick={() => {
+              if (!isSpinning && freeSpins === 0) {
+                haptics.selection();
+                handleSpin();
+              }
+            }}
+            className="grid grid-cols-5 gap-1 bg-black rounded-xl sm:rounded-2xl overflow-hidden border border-zinc-800 p-0.5 sm:p-1 h-[155px] sm:h-[195px] cursor-pointer active:scale-[0.99] transition-transform select-none"
+            title="Tap reels to spin"
+          >
             {reels.map((_, colIndex) => (
               <Reel 
                 key={colIndex}
@@ -691,9 +702,15 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
         <div className="w-full max-w-xl bg-[#0f172a] rounded-2xl sm:rounded-3xl border border-slate-800 p-2 sm:p-3.5 space-y-2 sm:space-y-3 shadow-xl shrink-0">
           {/* Quick Bet Chips */}
           <div className="space-y-1">
-            <span className="text-[9px] sm:text-[10px] font-chakra font-black text-slate-400 uppercase tracking-wider block">
-              QUICK BET SELECTION:
-            </span>
+            <div className="flex items-center justify-between pb-0.5">
+              <span className="text-[9px] sm:text-[10px] font-chakra font-black text-slate-400 uppercase tracking-wider block">
+                QUICK BET SELECTION:
+              </span>
+              <div className="flex items-center gap-1.5 bg-slate-900/90 px-2 py-0.5 rounded-lg border border-emerald-500/40">
+                <span className="text-[9px] font-mono font-bold text-slate-400 uppercase">Balance:</span>
+                <span className="font-rajdhani font-black text-emerald-400 text-xs sm:text-sm">৳{balance.toLocaleString()}</span>
+              </div>
+            </div>
             <div className="grid grid-cols-4 sm:grid-cols-8 gap-1">
               {BET_VALUES.map(val => (
                 <button
@@ -815,6 +832,45 @@ export default function BoxerKingGame({ user, userData, onBack }: BoxerKingGameP
               >
                 CLOSE
               </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Insufficient Balance Modal */}
+      <AnimatePresence>
+        {showInsufficientBalance && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-[#0f172a] border-2 border-amber-500/70 rounded-2xl p-5 max-w-xs w-full text-center space-y-3.5 shadow-2xl"
+            >
+              <div className="w-12 h-12 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto border border-amber-500/40">
+                <AlertCircle size={24} />
+              </div>
+              <div>
+                <h4 className="font-chakra font-black text-white text-base">পর্যাপ্ত ব্যালেন্স নেই</h4>
+                <p className="text-xs text-slate-400 mt-1">স্পিন করার জন্য ন্যূনতম ৳{bet} প্রয়োজন। আপনার বর্তমান ব্যালেন্স ৳{balance.toLocaleString()}।</p>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  onClick={() => setShowInsufficientBalance(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-chakra font-bold transition-colors cursor-pointer"
+                >
+                  বন্ধ করুন
+                </button>
+                <button
+                  onClick={() => {
+                    setShowInsufficientBalance(false);
+                    onBack();
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 text-white text-xs font-chakra font-black shadow-md hover:from-emerald-500 hover:to-emerald-600 transition-colors cursor-pointer"
+                >
+                  ডিপোজিট করুন
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

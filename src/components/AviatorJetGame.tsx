@@ -858,9 +858,9 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
           return;
         }
 
-        // Smooth progressive multiplier flight curve reaching target multiplier at flight end
+        // Crisp progressive multiplier flight curve reaching target multiplier smoothly
         const target = crashMultRef.current;
-        const currentM = 1.00 + (target - 1.00) * Math.pow(progress, 1.6);
+        const currentM = 1.00 + (target - 1.00) * Math.pow(progress, 1.3);
         const roundedM = parseFloat(currentM.toFixed(2));
         setMultiplier(roundedM);
 
@@ -1328,22 +1328,6 @@ export default function AviatorJetGame({ user, userData, onBack }: AviatorJetGam
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Signal Link strictly Admin Only - never shown to normal players */}
-          {userData?.role === 'admin' && (
-            <button
-              onClick={() => {
-                haptics.impact();
-                const url = `${window.location.origin}/#signal`;
-                window.open(url, 'tk333_live_signal_win', 'width=460,height=780,scrollbars=yes,resizable=yes');
-              }}
-              title="Admin: আলাদা উইন্ডোতে সিগন্যাল মনিটর করুন"
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-purple-950/80 hover:bg-purple-900 text-purple-200 border border-purple-500/40 text-xs font-chakra font-black active:scale-95 transition-all shadow-md shadow-purple-950/40"
-            >
-              <Radio size={13} className="text-purple-400" />
-              <span className="hidden sm:inline">ADMIN SIGNAL</span>
-            </button>
-          )}
-
           <button
             onClick={() => setIsMuted(!isMuted)}
             className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/80 active:scale-95 transition-all"

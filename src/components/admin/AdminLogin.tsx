@@ -137,6 +137,13 @@ export default function AdminLogin({ onSuccess, onBackToSite }: AdminLoginProps)
 
       // 2. Standard Firebase Email/Password check fallback
       if (inputUser.includes('@')) {
+        if (inputUser.toLowerCase() !== MASTER_ADMIN_EMAIL.toLowerCase()) {
+          throw new Error(
+            lang === 'bn' 
+              ? 'শুধুমাত্র অনুমোদিত অ্যাডমিন ইমেইল mohammadabdulwazed1@gmail.com দিয়েই প্রবেশ করা সম্ভব।' 
+              : 'Access denied: Only authorized admin email can log in.'
+          );
+        }
         const cred = await signInWithEmailAndPassword(auth, inputUser, inputPass);
         await ensureAdminFirestoreProfile(cred.user.uid, cred.user.email || inputUser);
         sessionStorage.setItem('tk333_admin_auth', 'true');
@@ -176,6 +183,18 @@ export default function AdminLogin({ onSuccess, onBackToSite }: AdminLoginProps)
       
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
+
+      if (result.user.email?.toLowerCase() !== MASTER_ADMIN_EMAIL.toLowerCase()) {
+        await auth.signOut();
+        sessionStorage.removeItem('tk333_admin_auth');
+        localStorage.removeItem('tk333_admin_auth');
+        throw new Error(
+          lang === 'bn'
+            ? 'শুধুমাত্র অনুমোদিত অ্যাডমিন ইমেইল mohammadabdulwazed1@gmail.com দিয়েই প্রবেশ করা সম্ভব।'
+            : 'Access denied: Only authorized admin email mohammadabdulwazed1@gmail.com is permitted.'
+        );
+      }
+
       await ensureAdminFirestoreProfile(result.user.uid, result.user.email || undefined);
       
       sessionStorage.setItem('tk333_admin_auth', 'true');

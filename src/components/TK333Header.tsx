@@ -51,7 +51,7 @@ export default function TK333Header({
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const brandName = settings?.brandName || 'TK333';
-  const isAdmin = userData?.role === 'admin' || user?.email === 'mohammadabdulwazed1@gmail.com';
+  const isAdmin = user?.email === 'mohammadabdulwazed1@gmail.com';
 
   const triggerRefresh = () => {
     haptics.medium();
@@ -134,21 +134,6 @@ export default function TK333Header({
               title={lang === 'bn' ? 'গেম খুঁজুন' : 'Search games'}
             >
               <Search size={16} />
-            </button>
-
-            {/* Language Switcher for medium & up screens */}
-            <button
-              onClick={() => {
-                haptics.selection();
-                toggleLanguage();
-              }}
-              className="hidden md:flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl border border-slate-200 text-xs font-bold active:scale-95 transition-all shrink-0"
-              title={lang === 'bn' ? 'Switch to English' : 'বাংলায় পরিবর্তন করুন'}
-            >
-              <Globe size={13} className="text-amber-500" />
-              <span className={lang === 'bn' ? 'text-blue-600 font-bold' : 'text-slate-500'}>বাংলা</span>
-              <span className="text-slate-300">|</span>
-              <span className={lang === 'en' ? 'text-blue-600 font-bold' : 'text-slate-500'}>EN</span>
             </button>
 
             {user ? (
@@ -382,8 +367,8 @@ export default function TK333Header({
                     onClick={() => handleNavClick('member')} 
                   />
 
-                  {/* Admin Portal Entry (visible initially until administrator toggles Hide Admin Panel) */}
-                  {!(settings?.adminPanelHidden === true || (typeof window !== 'undefined' && localStorage.getItem('tk333_admin_panel_hidden') === 'true')) && (
+                  {/* Admin Portal Entry - Strictly restricted to authorized email */}
+                  {user?.email === 'mohammadabdulwazed1@gmail.com' && (
                     <div className="pt-2 mt-2 border-t border-slate-100">
                       <button
                         onClick={() => handleNavClick('admin')}

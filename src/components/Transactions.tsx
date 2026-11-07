@@ -22,12 +22,15 @@ import {
   XCircle,
   Copy,
   Check,
-  Info
+  Info,
+  ChevronLeft
 } from 'lucide-react';
 
 interface TransactionsProps {
   userData: UserData | null;
   user?: any;
+  initialTab?: 'deposit' | 'withdraw';
+  onBack?: () => void;
 }
 
 const DEFAULT_LOGOS: Record<string, string> = {
@@ -47,9 +50,15 @@ const DEPOSIT_PACKAGES = [
 
 const PRESET_AMOUNTS = [300, 500, 1000, 2000, 5000, 10000, 15000, 20000];
 
-export default function Transactions({ userData, user }: TransactionsProps) {
+export default function Transactions({ userData, user, initialTab = 'deposit', onBack }: TransactionsProps) {
   const { lang, t } = useLanguage();
-  const [tab, setTab] = useState<'deposit' | 'withdraw'>('deposit');
+  const [tab, setTab] = useState<'deposit' | 'withdraw'>(initialTab);
+
+  useEffect(() => {
+    if (initialTab) {
+      setTab(initialTab);
+    }
+  }, [initialTab]);
   const [method, setMethod] = useState<string>('bkash');
   const [amount, setAmount] = useState('');
   const [senderNumber, setSenderNumber] = useState('');
@@ -360,6 +369,25 @@ export default function Transactions({ userData, user }: TransactionsProps) {
 
   return (
     <div className="space-y-4 max-w-md mx-auto">
+      {/* Top Header if onBack provided */}
+      {onBack && (
+        <div className="flex items-center justify-between pb-1">
+          <button
+            onClick={() => {
+              haptics.selection();
+              onBack();
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 text-xs font-chakra font-black shadow-xs hover:bg-slate-50 transition-all cursor-pointer"
+          >
+            <ChevronLeft size={15} />
+            <span>{lang === 'bn' ? 'ফিরে যান' : 'Back to Member'}</span>
+          </button>
+          <span className="font-chakra font-black text-xs uppercase tracking-wider text-slate-700">
+            {tab === 'deposit' ? (lang === 'bn' ? 'ডিপোজিট ক্যাশিয়ার' : 'Deposit Cashier') : (lang === 'bn' ? 'উইথড্রাল ক্যাশিয়ার' : 'Withdrawal Cashier')}
+          </span>
+        </div>
+      )}
+
       {/* Switch Tab (Deposit / Withdraw) */}
       <div className="flex bg-slate-200/80 p-1.5 rounded-2xl border border-slate-300 shadow-inner">
         <button 

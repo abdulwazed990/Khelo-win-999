@@ -45,6 +45,9 @@ export type Page =
   | 'prize' 
   | 'member' 
   | 'transactions' 
+  | 'deposit'
+  | 'withdraw'
+  | 'withdrawal'
   | 'history' 
   | 'free-spin' 
   | 'captcha' 
@@ -99,17 +102,53 @@ export default function App() {
       } else if (path === 'admin/login' || path === 'admin-login' || hash === 'admin-login') {
         setCurrentPage('admin-login');
       } else if (path === 'promotion' || path === 'promotions' || hash === 'promotion') {
-        setCurrentPage('promotion');
+        if (!auth.currentUser) {
+          setCurrentPage('home');
+          setShowAuth(true);
+          setAuthMode('login');
+        } else {
+          setCurrentPage('promotion');
+        }
       } else if (path === 'agent' || path === 'affiliate' || hash === 'agent') {
-        setCurrentPage('agent');
+        if (!auth.currentUser) {
+          setCurrentPage('home');
+          setShowAuth(true);
+          setAuthMode('login');
+        } else {
+          setCurrentPage('agent');
+        }
       } else if (path === 'prize' || path === 'rewards' || hash === 'prize') {
-        setCurrentPage('prize');
+        if (!auth.currentUser) {
+          setCurrentPage('home');
+          setShowAuth(true);
+          setAuthMode('login');
+        } else {
+          setCurrentPage('prize');
+        }
       } else if (path === 'member' || path === 'profile' || hash === 'member') {
-        setCurrentPage('member');
+        if (!auth.currentUser) {
+          setCurrentPage('home');
+          setShowAuth(true);
+          setAuthMode('login');
+        } else {
+          setCurrentPage('member');
+        }
       } else if (path === 'transactions' || path === 'deposit' || path === 'withdraw' || hash === 'transactions') {
-        setCurrentPage('transactions');
+        if (!auth.currentUser) {
+          setCurrentPage('home');
+          setShowAuth(true);
+          setAuthMode('login');
+        } else {
+          setCurrentPage('transactions');
+        }
       } else if (path === 'history' || hash === 'history') {
-        setCurrentPage('history');
+        if (!auth.currentUser) {
+          setCurrentPage('home');
+          setShowAuth(true);
+          setAuthMode('login');
+        } else {
+          setCurrentPage('history');
+        }
       } else if (
         path === 'aviator' || 
         path === 'aviator-jet' || 
@@ -202,13 +241,37 @@ export default function App() {
             setUserData(data);
             try {
               localStorage.setItem(`tk333_cached_user_${user.uid}`, JSON.stringify(data));
+              if (data.welcomeBonusClaimed) {
+                localStorage.setItem(`tk333_bonus_claimed_${user.uid}`, 'true');
+              }
             } catch (lsE) {}
+          } else {
+            // First time profile creation in Firestore
+            const alreadyClaimed = localStorage.getItem(`tk333_bonus_claimed_${user.uid}`) === 'true';
+            const initialBalance = alreadyClaimed ? 0 : 10;
+            const newProfile: UserData = {
+              uid: user.uid,
+              name: user.displayName || 'TK333 Member',
+              username: user.email?.split('@')[0] || 'user',
+              email: user.email || '',
+              phone: user.phoneNumber || '',
+              balance: initialBalance,
+              welcomeBonusClaimed: true,
+              freeSpins: 0,
+              role: user.email === 'mohammadabdulwazed1@gmail.com' ? 'admin' : 'user',
+              createdAt: new Date().toISOString()
+            };
+            try {
+              localStorage.setItem(`tk333_bonus_claimed_${user.uid}`, 'true');
+              localStorage.setItem(`tk333_cached_user_${user.uid}`, JSON.stringify(newProfile));
+            } catch (e) {}
+            setUserData(newProfile);
           }
           setLoading(false);
         },
         (error) => {
           console.warn(`User snapshot fallback active for ${user.uid}:`, error?.message);
-          // Quota fallback: Ensure user data is populated from local cache or fallback profile
+          // Quota fallback: Ensure user data is populated from local cache or fallback profile (default balance 0, never 10)
           setUserData(prev => {
             if (prev) return prev;
             try {
@@ -219,9 +282,9 @@ export default function App() {
               uid: user.uid,
               name: user.displayName || 'TK333 Member',
               username: user.email?.split('@')[0] || 'user',
-              email: user.email,
+              email: user.email || '',
               phone: user.phoneNumber || '',
-              balance: 10,
+              balance: 0,
               welcomeBonusClaimed: true,
               freeSpins: 0,
               role: user.email === 'mohammadabdulwazed1@gmail.com' ? 'admin' : 'user',
@@ -295,7 +358,15 @@ export default function App() {
     const protectedPages: Page[] = [
       'member', 
       'profile',
+      'promotion',
+      'agent',
+      'prize',
+      'free-spin',
+      'captcha',
       'transactions', 
+      'deposit',
+      'withdraw',
+      'withdrawal',
       'history', 
       'aviator-jet', 
       'pokie-super-ace', 
@@ -455,14 +526,20 @@ export default function App() {
     );
   }
 
-  // Admin Route Handler
+  // Admin Route Handler - STRICT AUTHORIZATION: ONLY mohammadabdulwazed1@gmail.com
   const hasAdminSession = typeof window !== 'undefined' && (
     sessionStorage.getItem('tk333_admin_auth') === 'true' || 
     localStorage.getItem('tk333_admin_auth') === 'true'
   );
-  const isAdmin = userData?.role === 'admin' || user?.email === 'mohammadabdulwazed1@gmail.com' || hasAdminSession;
+  const isAuthorizedAdmin = user?.email === 'mohammadabdulwazed1@gmail.com';
+  const isAdmin = isAuthorizedAdmin && (userData?.role === 'admin' || hasAdminSession);
 
   if (currentPage === 'admin-login') {
+    // If logged in with an unauthorized email, safely deny access and return to home
+    if (user && !isAuthorizedAdmin) {
+      handleNavigate('home');
+      return null;
+    }
     return (
       <AdminLogin 
         onSuccess={() => handleNavigate('admin')} 
@@ -472,6 +549,12 @@ export default function App() {
   }
 
   if (currentPage === 'admin') {
+    // If logged in with an unauthorized email, safely deny access and return to home
+    if (user && !isAuthorizedAdmin) {
+      handleNavigate('home');
+      return null;
+    }
+
     // If not authenticated as admin, prompt Admin Login
     if (!isAdmin) {
       return (
@@ -517,16 +600,29 @@ export default function App() {
       case 'member':
       case 'profile':
         return <MemberProfile user={user} userData={userData} onNavigate={handleNavigate} />;
+      case 'deposit':
+        return (
+          <div className="max-w-md mx-auto pb-10">
+            <Transactions userData={userData} user={user} initialTab="deposit" onBack={() => handleNavigate('member')} />
+          </div>
+        );
+      case 'withdraw':
+      case 'withdrawal':
+        return (
+          <div className="max-w-md mx-auto pb-10">
+            <Transactions userData={userData} user={user} initialTab="withdraw" onBack={() => handleNavigate('member')} />
+          </div>
+        );
       case 'transactions':
         return (
           <div className="max-w-md mx-auto pb-10">
-            <Transactions userData={userData} />
+            <Transactions userData={userData} user={user} onBack={() => handleNavigate('member')} />
           </div>
         );
       case 'history':
         return (
           <div className="max-w-md mx-auto pb-10">
-            <HistoryPage userData={userData} />
+            <HistoryPage userData={userData} onBack={() => handleNavigate('member')} onNavigate={handleNavigate} />
           </div>
         );
       default:

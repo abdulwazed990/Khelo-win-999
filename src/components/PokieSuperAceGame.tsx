@@ -1519,7 +1519,14 @@ export default function PokieSuperAceGame({ user, userData, onBack }: { user: an
 
           <div 
             id="slot-grid"
-            className="grid grid-cols-5 gap-1 wood-texture p-1 rounded-xl border-2 border-yellow-900/50 shadow-[0_20px_50px_rgba(0,0,0,0.5)] w-full"
+            onClick={() => {
+              if (!isSpinning && !isProcessing && freeSpins === 0) {
+                haptics.selection();
+                spin();
+              }
+            }}
+            className="grid grid-cols-5 gap-1 wood-texture p-1 rounded-xl border-2 border-yellow-900/50 shadow-[0_20px_50px_rgba(0,0,0,0.5)] w-full cursor-pointer active:scale-[0.99] transition-transform select-none"
+            title="Tap reels to spin"
           >
             {grid.map((col, cIdx) => (
               <Reel 

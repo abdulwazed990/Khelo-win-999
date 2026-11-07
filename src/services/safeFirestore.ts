@@ -460,6 +460,25 @@ export async function safeSetDoc(
   }
 }
 
+function resolveFieldValuesForCache(currentData: any, newData: any): any {
+  const result = { ...(currentData || {}) };
+  for (const key of Object.keys(newData || {})) {
+    const val = newData[key];
+    if (val && typeof val === 'object' && (val._methodName || (val.constructor && val.constructor.name === 'FieldValue'))) {
+      const operand = (val as any)?._delegate?._operand ?? (val as any)?.operand ?? (val as any)?._operand;
+      if (typeof operand === 'number') {
+        const currentVal = Number(result[key]) || 0;
+        result[key] = Math.max(0, currentVal + operand);
+      } else {
+        result[key] = new Date().toISOString();
+      }
+    } else {
+      result[key] = val;
+    }
+  }
+  return result;
+}
+
 /**
  * Safely updates a document with local-first cache and fallback queue
  */
@@ -471,10 +490,20 @@ export async function safeUpdateDoc(
   const lsKey = `tk333_doc_${path.replace(/\//g, '_')}`;
 
   const currentData = memoryDocCache.get(path)?.data || {};
-  const updated = { ...currentData, ...data };
+  const updated = resolveFieldValuesForCache(currentData, data);
   memoryDocCache.set(path, { data: updated, timestamp: Date.now() });
   try {
     localStorage.setItem(lsKey, JSON.stringify(updated));
+    // If updating a user profile, also update user cache
+    if (path.startsWith('users/')) {
+      const uid = path.replace('users/', '');
+      const existingUserRaw = localStorage.getItem(`tk333_cached_user_${uid}`);
+      if (existingUserRaw) {
+        const existingUser = JSON.parse(existingUserRaw);
+        const merged = { ...existingUser, ...updated };
+        localStorage.setItem(`tk333_cached_user_${uid}`, JSON.stringify(merged));
+      }
+    }
   } catch (e) {}
 
   try {
